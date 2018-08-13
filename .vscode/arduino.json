@@ -1,5 +1,0 @@
-{
-    "board": "CONTROLLINO_Boards:avr:controllino_mega",
-    "port": "/dev/ttyACM0",
-    "sketch": "power_managment/power_managment.ino"
-}
