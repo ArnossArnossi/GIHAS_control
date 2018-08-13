@@ -1,0 +1,18 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "/data/GIHAS_control/libraries/ArduinoJson-5.13.2/src",
+                "/home/arno/.arduino15/packages/CONTROLLINO_Boards/hardware/avr/2.0.1/**",
+                "/usr/include/c++/8/**",
+                "${workspaceFolder}"
+            ],
+            "intelliSenseMode": "clang-x64",
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}
