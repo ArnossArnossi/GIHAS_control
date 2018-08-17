@@ -1,88 +1,84 @@
-#include <map>
-#include <utility> //needed for pair
-
-
 #include "Controllino.h"
 //#include "Utils.h" //TODO: include logging
 
-using namespace std;
 
-// 3d arraylike structure for storing name, pin and value of sensor
-// these nested pairs seem ugly. Can this be done better?
-// does not work because stl is not implemented in arduino i.e. awr
-typedef map <String, pair <const int, int> > triple_map;
+struct Pin {
+  const String pinName;
+  const int pinNumber;
+  int pinState;
+};
 
+template <int maxInputSize>
 class Inputs {
 
   private:
-    triple_map _inputData;
+    Pin _inputData[maxInputSize];
  
   public:
-    Inputs(map <String, const int> pinLayout) {
-      for (const auto& i : pinLayout){
-        pinMode(i.second, INPUT) // acctually input is allready set as default
-        pinState = digitalRead(i.second; //rethink if it is really needed to read here
-        _inputData[i.first] = make_pair(i.second, pinState);
+    Inputs(Pin pinLayout[]) {
+      for (int i = 0; i < maxInputSize; i++) {
+        pinMode(pinLayout[i].pinNumber, INPUT);
+        _inputData[i] = pinLayout[i];
+        // TODO:rethink if it is really needed to read here
+        _inputData[i].pinState = digitalRead(_inputData[i].pinNumber);
       }
     }
     
-    //machst man das so mit dem method header?
-    const &triple_map getAllInputs(){
+    const Pin * getAllInputs() {
       // read out all inputs, store them in _inputData and return constant reference to them
-      for (auto &pin : _inputData){
-        pin.second.second = digitalRead(pin.second.first);
+      // and because c++ is being a bitch one has to pass a pointer to _inputData instead
+      // of a reference and the number of elements is lost in the translation
+      // it feels like the whole class structure is wrong and that one shouldnt need to pass
+      // an array around anyway.
+      for (auto& pin : _inputData) {
+        pin.pinState = digitalRead(pin.pinNumber);
       }
-      //is this a constant reference?
-      return const &_inputData
+      return _inputData;
     }
 
-    int getAllInputs(String sensor){
-      // TODO: maybe overthink whether you want to get a list of inputs an not all of them
+    int getInputState(String sensor) {
       // return current value for sensor by string as int
       // TODO: maybe also return name and pin but only if needed
-      _inputData[sensor].second = digitalRead(_inputData[sensor].first)
-      //this should return by value and therfore a normal int
-      return _inputData[sensor].second
+      for (auto & i : _inputData) {
+        if (i.pinName == sensor) {
+          i.pinState = digitalRead(i.pinNumber);
+          return i.pinState;
+        }
+      }
+      // LOG: no sensor with that name found
+      return 0;
     }
-}
+};
 
+template <int maxOutputSize>
 class Outputs {
 
-  private:
-    // the state of the current Outputs
-    // first element: name of sensor, second: pin id as int,
-    // third: current value of output as int
-    triple_map _outputData
+private:
+    Pin _outputData[maxOutputSize];
   
-  public:
-    Outputs(map <String, const int> pinLayout) {
-      for (const auto &i : pinLayout){
-        pinMode(i.second, OUTPUT)
-        digitalWrite(i.second; 0)
-        _outputData[i.first] = make_pair(i.second, 0);
+public:
+    Inputs(Pin pinLayout[]) {
+      for (int i = 0; i < maxOutputSize; i++) {
+        pinMode(pinLayout[i].pinNumber, OUTPUT);
+        _outputData[i] = pinLayout[i];
+        _outputData[i].pinState = 0; // make sure all outputs are off initially
+        digitalWrite(_outputData[i].pinNumber);
       }
     }
-
-    void setOutput(pair <String, int> outputValue) {
-      // parameters: outputvalue: pair of sensor name as string and value to set as int
-      digitalWrite(_outputData[outputValue.first].first, outputValue.second)
-    }
-
-    void setMultipleOutputs(map <String, int> outputValues){
-      // set mulitple outputs at once
-      //takes a map of string defining the outputs and the desired states 
-      for (const auto &i : outputValues){
-        setOutput(i)
-      }
-    }
-
-
     
+    void setOutput(String outputName, int stateValue) {
+      // set state of outputName to stateValue
+      for (auto& pin : _outputData) {
+        if (pin.pinName == outputName) {
+          digitalWrite(pin.pinNumber, stateValue);
+          // LOG: wich pin has been set to what
+          return;
+        }
+      }
+      // LOG: no output with that name has been found
+    }
+};
 
-
-
-
-}
 
 
 void setup() {
