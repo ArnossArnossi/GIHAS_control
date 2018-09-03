@@ -2,14 +2,9 @@
 #include "ArduinoJson.h"
 
 
-void serialize (int key, int value){
-  // turn key and value into dictionary, serialize and send it
-  if (!Serial){
-    // here maybe there should be some blinking going on or something
-    // like this just to signal that the connection is lost
-    // or return an int from function (0 for all good 1 for error)
-    return;
-  }
+JsonObject & buildJson (String type){
+  //build JsonObject with type denoting type of json message
+
   // initilize Json object the size of 200 is set and has to be
   // changed according to the size of the json document
   // probably just use enough so a complete status report can be sent
@@ -17,7 +12,14 @@ void serialize (int key, int value){
   // root is now the object which holds the json data an where data can
   // be appended and sent to Serial
   JsonObject& root = jsonBuffer.createObject();
-  root[String(key)] = value;
+  root["type"] = type;
+  return root;
+}
+
+void sendJson(JsonObject & root){
+  if (!Serial) {
+    return;
+  }
   root.printTo(Serial);
   // only needed if we seperate incoming streams via readline()f
   Serial.println();
@@ -46,6 +48,7 @@ class Inputs {
  
   public:
     Inputs() {}
+
     void begin(Pin pinLayout[]) {
       // constructor method with different name to call at a later time
       for (int i = 0; i < maxInputSize; i++) {
@@ -77,7 +80,10 @@ class Inputs {
           return i.pinState;
         }
       }
-      // LOG: no sensor with that name found
+      String errorMessage = "No Input with name: " + sensor + " found. Returning 0.";
+      JsonObject & root = buildJson("error");
+      root["error"] = errorMessage;
+      sendJson(root);
       return 0;
     }
 };
@@ -91,6 +97,7 @@ private:
   
 public:
     Outputs() {}
+    
     void begin(Pin pinLayout[]) {
       // constructor method with different name to call at a later time
       for (int i = 0; i < maxOutputSize; i++) {
@@ -106,11 +113,20 @@ public:
       for (auto& pin : _outputData) {
         if (pin.pinName == outputName) {
           digitalWrite(pin.pinNumber, stateValue);
-          // LOG: wich pin has been set to what
+          JsonObject & root = buildJson("setOut");
+          root[pin.pinName] = stateValue;
+          sendJson(root);
           return;
         }
       }
-      // LOG: no output with that name has been found
+      String errorMessage = "No Output with name: " + outputName + " found. Nothing is set.";
+      JsonObject & root = buildJson("error");
+      root["error"] = errorMessage;
+      sendJson(root);
+    }
+
+    const Pin * getOutputs() {
+      return _outputData;
     }
 };
 
@@ -135,8 +151,7 @@ class Machine {
       // set multiple outputs at once
       // maybe this should live in Outputs
       // also all those nested for loops cannot be good for performance
-
-      //LOG setting machine state
+      // maybe LOG this
       for (int i = 0; i<arraySize; i++) {
         outHandler.setOutput(config[i].key, config[i].value);
       }
@@ -145,16 +160,27 @@ class Machine {
     int checkAndReact() {
       // important part: all health checks are defined here
       // returns: int as error status
+      // one could also check all inputs at start and 
       int error = 0;
+      
       if (inHandler.getInputState("foo") == 1) {
         //run react method
-        //log EVERYTHING
+        //log EVERYTHING as level:warn
+        String warnMessage = "case 1 was activated";
+        JsonObject & root = buildJson("sensorEvent");
+        root["warn"] = warnMessage;
+        sendJson(root);
+
         error = 1;
       }
 
       if (inHandler.getInputState("bar") == 1) {
         //run some other shit
-        //and ofcourse...log it
+        String warnMessage = "case 2 was activated";
+        JsonObject & root = buildJson("sensorEvent");
+        root["warn"] = warnMessage;
+        sendJson(root);
+        shutdownSource();
         error = 1;
       }
     return error;
@@ -162,7 +188,13 @@ class Machine {
 
     void shutdownSource(){
       outHandler.setOutput("out1", 0);
-      // LOG it
+      //log entire output state
+      JsonObject & root = buildJson("shutdownSource");
+      const Pin * outputs = outHandler.getOutputs();
+      for (int i = 0; i < maxOutputSize; i++) {
+        root[outputs[i].pinName] = outputs[i].pinState;
+      }
+      sendJson(root);
     }
 };
 
@@ -192,10 +224,23 @@ void setup() {
     {"out2", 1}
   };
 
+  // start Serial and check if its connected correctly
+  Serial.begin(9600);
+  int startTime = millis();
+  while(!Serial) {
+    if (millis() - startTime >= 10000) {
+      break;
+    }
+  }
+
   checker.begin(inputPinLayout, outputPinLayout);
+
+  //wait a bit. seems to be needed to set everything up correctly
+  delay(1);
   int errorStatus = checker.checkAndReact();
   if (!errorStatus) {
     checker.setMachineState(normalOperationConfig, 2);
+    Serial.println("MachineState set in the setupfunction");
   }
 
 }
