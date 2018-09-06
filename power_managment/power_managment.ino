@@ -44,7 +44,7 @@ template <int maxInputSize>
 class Inputs {
 
   private:
-    Pin _inputData[maxInputSize];
+    Pin inputData[maxInputSize];
  
   public:
     Inputs() {}
@@ -53,28 +53,28 @@ class Inputs {
       // constructor method with different name to call at a later time
       for (int i = 0; i < maxInputSize; i++) {
         pinMode(pinLayout[i].pinNumber, INPUT);
-        _inputData[i] = pinLayout[i];
+        inputData[i] = pinLayout[i];
         // TODO:rethink if it is really needed to read here
-        _inputData[i].pinState = digitalRead(_inputData[i].pinNumber);
+        inputData[i].pinState = digitalRead(inputData[i].pinNumber);
       }
     }
     
     const Pin * getAllInputs() {
-      // read out all inputs, store them in _inputData and return constant reference to them
-      // and because c++ is being a bitch one has to pass a pointer to _inputData instead
+      // read out all inputs, store them in inputData and return constant reference to them
+      // and because c++ is being a bitch one has to pass a pointer to inputData instead
       // of a reference and the number of elements is lost in the translation
       // it feels like the whole class structure is wrong and that one shouldnt need to pass
       // an array around anyway.
-      for (auto& pin : _inputData) {
+      for (auto& pin : inputData) {
         pin.pinState = digitalRead(pin.pinNumber);
       }
-      return _inputData;
+      return inputData;
     }
 
     int getInputState(String sensor) {
       // return current value for sensor by string as int
       // TODO: maybe also return name and pin but only if needed
-      for (auto & i : _inputData) {
+      for (auto & i : inputData) {
         if (i.pinName == sensor) {
           i.pinState = digitalRead(i.pinNumber);
           return i.pinState;
@@ -93,7 +93,7 @@ template <int maxOutputSize>
 class Outputs {
 
 private:
-    Pin _outputData[maxOutputSize];
+    Pin outputData[maxOutputSize];
   
 public:
     Outputs() {}
@@ -102,17 +102,18 @@ public:
       // constructor method with different name to call at a later time
       for (int i = 0; i < maxOutputSize; i++) {
         pinMode(pinLayout[i].pinNumber, OUTPUT);
-        _outputData[i] = pinLayout[i];
-        _outputData[i].pinState = 0; // make sure all outputs are off initially
-        digitalWrite(_outputData[i].pinNumber, 0);
+        outputData[i] = pinLayout[i];
+        outputData[i].pinState = 0; // make sure all outputs are off initially
+        digitalWrite(outputData[i].pinNumber, 0);
       }
     }
     
     void setOutput(String outputName, int stateValue) {
       // set state of outputName to stateValue
-      for (auto& pin : _outputData) {
+      for (auto& pin : outputData) {
         if (pin.pinName == outputName) {
           digitalWrite(pin.pinNumber, stateValue);
+          pin.pinState = stateValue;
           JsonObject & root = buildJson("setOut");
           root[pin.pinName] = stateValue;
           sendJson(root);
@@ -125,8 +126,8 @@ public:
       sendJson(root);
     }
 
-    const Pin * getOutputs() {
-      return _outputData;
+    const Pin * getAllOutputs() {
+      return outputData;
     }
 };
 
@@ -137,6 +138,18 @@ class Machine {
   private:
     Inputs <maxInputSize> inHandler;
     Outputs <maxOutputSize> outHandler;
+    
+    // controlparameters for responses to sensor signal
+    bool sourceFullShutdown = false, sourceSoftShutdown = false;
+    bool chamberFullShutdown = false, chamberSoftShutdown = false;
+    bool detectorFullShutdown = false, detectorSoftShutdown = false;
+
+    // list of water flow sensors to be checked
+    // defined here so they dont get initilized each time a check is done
+    String sourceFlowSensors[2] = {"sourceFlow_1", "sourceFlow_2"};
+    String chamberFlowSensors[2] = {"chamberFlow_1", "chamberFlow_2"};
+    String detectorFlowSensors[2] = {"detectorFlow_1", "detectorFlow_2"};
+    
   
   public:
     Machine() : inHandler(), outHandler() {}
@@ -162,45 +175,177 @@ class Machine {
       // returns: int as error status
       // one could also check all inputs at start and 
       int error = 0;
+
+      // ground water test
       
-      if (inHandler.getInputState("foo") == 1) {
-        //run react method
-        //log EVERYTHING as level:warn
-        String warnMessage = "case 1 was activated";
-        JsonObject & root = buildJson("sensorEvent");
-        root["warn"] = warnMessage;
+      if (inHandler.getInputState("sourceGroundH2O") == 1 && !sourceFullShutdown) {
+        JsonObject & root = buildJson("sensorEventGroundH2O");
+        root["warn"] = "Ground water on source detected!";
         sendJson(root);
-
-        error = 1;
+        shutdownSource(true);
+        sourceFullShutdown = true;
       }
 
-      if (inHandler.getInputState("bar") == 1) {
-        //run some other shit
-        String warnMessage = "case 2 was activated";
-        JsonObject & root = buildJson("sensorEvent");
-        root["warn"] = warnMessage;
+      if (inHandler.getInputState("chamberGroundH2O") == 1 && !chamberFullShutdown) {
+        JsonObject & root = buildJson("sensorEventGroundH2O");
+        root["warn"] = "Ground water on scattering chamber detected!";
         sendJson(root);
-        shutdownSource();
-        error = 1;
+        shutdownChamber(true);
+        chamberFullShutdown = true;
       }
-    return error;
+
+      if (inHandler.getInputState("detectorGroundH2O") == 1 && !detectorFullShutdown) {
+        JsonObject & root = buildJson("sensorEventGroundH2O");
+        root["warn"] = "Ground water on detector found!";
+        sendJson(root);
+        shutdownDetector(true);
+        detectorFullShutdown = true;
+      }
+
+      // water flow test
+      if (!sourceSoftShutdown && !sourceFullShutdown) {
+
+
+        for (auto & i : sourceFlowSensors) {
+          if (inHandler.getInputState(i) == 1) {
+            JsonObject & root = buildJson("sensorEventH2OFlow");
+            root["warn"] = "Waterflow below critical level!";
+            root[i] = 1;
+            sendJson(root);
+            shutdownSource(false);
+            sourceSoftShutdown = true;
+          }
+        }
+      }
+
+      if (!chamberSoftShutdown && !chamberFullShutdown) {
+        for (auto & i : chamberFlowSensors) {
+          if (inHandler.getInputState(i) == 1) {
+            JsonObject & root = buildJson("sensorEventH2OFlow");
+            root["warn"] = "Waterflow below critical level!";
+            root[i] = 1;
+            sendJson(root);
+            shutdownChamber(false);
+            chamberSoftShutdown = true;
+          }
+        }
+      }
+
+      if (!detectorSoftShutdown && !detectorFullShutdown) {
+        for (auto & i : detectorFlowSensors) {
+          if (inHandler.getInputState(i) == 1) {
+            JsonObject & root = buildJson("sensorEventH2OFlow");
+            root["warn"] = "Waterflow below critical level!";
+            root[i] = 1;
+            sendJson(root);
+            shutdownDetector(false);
+            detectorSoftShutdown = true;
+          }
+        }
+      }
     }
+    // temp sensors will probably be implemented in the same way as water flow sensors are
+    // this is alot of boilerplate code which seems unnecessary but I should finish this first
+    // and then try to make this prettier.
 
-    void shutdownSource(){
-      outHandler.setOutput("out1", 0);
-      //log entire output state
+    void shutdownSource(bool closeOffH2O) {
+      // shutdown source. ugly repetion galore
+      outHandler.setOutput("heliumSource", 0);
+      outHandler.setOutput("sourcePump_1", 0);
+      outHandler.setOutput("sourcePump_2", 0);
+      if (closeOffH2O) {
+        outHandler.setOutput("sourceH2O", 0);
+      }
+      outHandler.setOutput("vacuumChamberValve", 0);
+
       JsonObject & root = buildJson("shutdownSource");
-      const Pin * outputs = outHandler.getOutputs();
+      root["warn"] = "Source shut down. Cooling water closing : " + closeOffH2O;
+      const Pin * outputs = outHandler.getAllOutputs();
       for (int i = 0; i < maxOutputSize; i++) {
         root[outputs[i].pinName] = outputs[i].pinState;
       }
       sendJson(root);
     }
+
+    void shutdownChamber(bool closeOffH2O) {
+     outHandler.setOutput("heliumSource", 0);
+     outHandler.setOutput("chamberPump_1", 0);
+     outHandler.setOutput("chamberPump_2", 0);
+     if (closeOffH2O) {
+       outHandler.setOutput("chamberH2O", 0);
+     }
+     outHandler.setOutput("vacuumChamberValve", 0);
+     outHandler.setOutput("vacuumDetectorValve", 0);
+
+    JsonObject & root = buildJson("shutdownChamber");
+    root["warn"] = "Chamber shut down. Cooling water closing : " + closeOffH2O;
+    const Pin * outputs = outHandler.getAllOutputs();
+    for (int i = 0; i < maxOutputSize; i++) {
+      root[outputs[i].pinName] = outputs[i].pinState;
+    }
+    sendJson(root);
+  }
+
+    void shutdownDetector(bool closeOffH2O) {
+      outHandler.setOutput("heliumSource", 0);
+      outHandler.setOutput("detectorPump_1", 0);
+      outHandler.setOutput("detectorPump_2", 0);
+      if (closeOffH2O) {
+        outHandler.setOutput("detectorH2O", 0);
+      }
+      outHandler.setOutput("vacuumDetectorValve", 0);
+
+      JsonObject & root = buildJson("shutdownDetector");
+      root["warn"] = "Detector shut down. Cooling water closing : " + closeOffH2O;
+      const Pin * outputs = outHandler.getAllOutputs();
+      for (int i = 0; i < maxOutputSize; i++) {
+        root[outputs[i].pinName] = outputs[i].pinState;
+      }
+      sendJson(root);
+    }
+
+
+    // void shutdownArea(String name, bool closeOffH2O) {
+    //   // shuts down entire area
+    //   // this is probably to convoluted i.e. to much "minimal form"
+    //   // what happens if the source needs a delay for shutdown and the detector doesnt?
+    //   // i think your overthinking this. A little repetition in your code isnt too bad
+
+    //   // the if cases dont work that way. The variables are only defined inside their scopes
+    //   // and using a pointer to predefined arrays for each area does not work because the
+    //   // pointer would loose the information about the array lenght.
+    //   // c++ is surprisingly difficult to use
+    //   // solution: you can just pass the array of outputs as a parameter to the function
+
+    //   if (name == "source") {
+    //     String closeOutputs[] = { "sourcePump1", "sourcePump2",
+    //                               "heliumSource", "vacuumChamberValve"};
+    //     String closeH2O = "sourceH2O";
+    //   } else if (name == "chamber") {
+    //     String closeOutputs[] = { "chamberPump1", "chamberPump2",
+    //                               "heliumSource", "vacuumChamberValve", "vacuumDetectorValve"};
+    //     String closeH2O = "chamberH2O";
+    //   } else if (name == "detector") {
+    //     String closeOutputs[] = { "detectorPump1", "detectorPump2",
+    //                               "heliumSource", "vacuumDetectorValve"};
+    //     String closeH2O = "detectorH2O";
+    //   }
+    
+    //   for (auto & i : closeOutputs) {
+    //     outHandler.setOutput(i, 0);
+    //   }
+    //   if (closeOffH2O) {
+    //     outHandler.setOutput(closeH2O, 0)
+    //   }
+    // }
+
+
+
 };
 
 
 // dont forget to set the template parameter correctly
-Machine <2, 2> checker;
+Machine <9, 12> checker;
 
 
 void setup() {
@@ -210,18 +355,45 @@ void setup() {
   // Remember to set the template parameter (the values inside < >)
   // at the Machine init correctly.
   Pin inputPinLayout[] = {
-    {"foo", CONTROLLINO_A0},
-    {"bar", CONTROLLINO_A1}
+    {"sourceFlow_1", CONTROLLINO_A0},
+    {"sourceFlow_2", CONTROLLINO_A1},
+    {"chamberFlow_1", CONTROLLINO_A3},
+    {"chamberFlow_2", CONTROLLINO_A4},
+    {"detectorFlow_1", CONTROLLINO_A5},
+    {"detectorFlow_2", CONTROLLINO_A6},
+    {"sourceGroundH2O", CONTROLLINO_A7},
+    {"chamberGroundH2O", CONTROLLINO_A8},
+    {"detectorGroundH2O", CONTROLLINO_A9},
   };
 
   Pin outputPinLayout[] = {
-    {"out1", CONTROLLINO_D0},
-    {"out2", CONTROLLINO_D1}
+    {"heliumSource", CONTROLLINO_D0},
+    {"sourcePump_1", CONTROLLINO_D1},
+    {"sourcePump_2", CONTROLLINO_D2},
+    {"chamberPump_1", CONTROLLINO_D3},
+    {"chamberPump_2", CONTROLLINO_D4},
+    {"detectorPump_1", CONTROLLINO_D5},
+    {"detectorPump_2", CONTROLLINO_D6},
+    {"sourceH2O", CONTROLLINO_D7},
+    {"chamberH2O", CONTROLLINO_D8},
+    {"detectorH2O", CONTROLLINO_D9},
+    {"vacuumChamberValve", CONTROLLINO_D10},
+    {"vacuumDetectorValve", CONTROLLINO_D11}
   };
 
   Dict normalOperationConfig[] = {
-    {"out1", 1},
-    {"out2", 1}
+    {"heliumSource", 1},
+    {"sourcePump_1", 1},
+    {"sourcePump_2", 1},
+    {"chamberPump_1", 1},
+    {"chamberPump_2", 1},
+    {"detectorPump_1", 1},
+    {"detectorPump_2", 1},
+    {"sourceH2O", 1},
+    {"chamberH2O", 1},
+    {"detectorH2O", 1},
+    {"vacuumChamberValve", 1},
+    {"vacuumDetectorValve", 1}
   };
 
   // start Serial and check if its connected correctly
@@ -239,7 +411,8 @@ void setup() {
   delay(1);
   int errorStatus = checker.checkAndReact();
   if (!errorStatus) {
-    checker.setMachineState(normalOperationConfig, 2);
+    // make sure to set the lenght of normalOperationConfig correctly
+    checker.setMachineState(normalOperationConfig, 12);
     Serial.println("MachineState set in the setupfunction");
   }
 
