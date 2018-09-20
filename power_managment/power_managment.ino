@@ -3,12 +3,14 @@
 
 
 JsonObject & buildJson (String type){
-  //build JsonObject with type denoting type of json message
+  // build JsonObject with type denoting type of json message
+  // the returned object should never live in the global scope
+  // or else it wont be destroyed by garbage collection => memory leak 
 
-  // initilize Json object the size of 200 is set and has to be
+  // initilize Json object with certain site. Size has to be
   // changed according to the size of the json document
-  // probably just use enough so a complete status report can be sent
-  StaticJsonBuffer<200> jsonBuffer;
+  // 1200 is enough for 32 key value <str, int> pairs for the output and a bit more
+  StaticJsonBuffer<1200> jsonBuffer;
   // root is now the object which holds the json data an where data can
   // be appended and sent to Serial
   JsonObject& root = jsonBuffer.createObject();
@@ -20,6 +22,8 @@ void sendJson(JsonObject & root){
   if (!Serial) {
     return;
   }
+  // if the JSONbuffer is to small the program hangs at printTo() and the endl;
+  // charecter after that never gets send
   root.printTo(Serial);
   // only needed if we seperate incoming streams via readline()f
   Serial.println();
@@ -259,7 +263,7 @@ class Machine {
       outHandler.setOutput("vacuumChamberValve", 0);
 
       JsonObject & root = buildJson("shutdownSource");
-      root["warn"] = "Source shut down. Cooling water closing : " + closeOffH2O;
+      root["warn"] = "Source shut down. Cooling water closing : " + String(closeOffH2O);
       const Pin * outputs = outHandler.getAllOutputs();
       for (int i = 0; i < maxOutputSize; i++) {
         root[outputs[i].pinName] = outputs[i].pinState;
@@ -278,7 +282,7 @@ class Machine {
      outHandler.setOutput("vacuumDetectorValve", 0);
 
     JsonObject & root = buildJson("shutdownChamber");
-    root["warn"] = "Chamber shut down. Cooling water closing : " + closeOffH2O;
+    root["warn"] = "Chamber shut down. Cooling water closing : " + String(closeOffH2O);
     const Pin * outputs = outHandler.getAllOutputs();
     for (int i = 0; i < maxOutputSize; i++) {
       root[outputs[i].pinName] = outputs[i].pinState;
@@ -296,7 +300,7 @@ class Machine {
       outHandler.setOutput("vacuumDetectorValve", 0);
 
       JsonObject & root = buildJson("shutdownDetector");
-      root["warn"] = "Detector shut down. Cooling water closing : " + closeOffH2O;
+      root["warn"] = "Detector shut down. Cooling water closing : " + String(closeOffH2O);
       const Pin * outputs = outHandler.getAllOutputs();
       for (int i = 0; i < maxOutputSize; i++) {
         root[outputs[i].pinName] = outputs[i].pinState;
@@ -357,13 +361,13 @@ void setup() {
   Pin inputPinLayout[] = {
     {"sourceFlow_1", CONTROLLINO_A0},
     {"sourceFlow_2", CONTROLLINO_A1},
-    {"chamberFlow_1", CONTROLLINO_A3},
-    {"chamberFlow_2", CONTROLLINO_A4},
-    {"detectorFlow_1", CONTROLLINO_A5},
-    {"detectorFlow_2", CONTROLLINO_A6},
-    {"sourceGroundH2O", CONTROLLINO_A7},
-    {"chamberGroundH2O", CONTROLLINO_A8},
-    {"detectorGroundH2O", CONTROLLINO_A9},
+    {"chamberFlow_1", CONTROLLINO_A2},
+    {"chamberFlow_2", CONTROLLINO_A3},
+    {"detectorFlow_1", CONTROLLINO_A4},
+    {"detectorFlow_2", CONTROLLINO_A5},
+    {"sourceGroundH2O", CONTROLLINO_A6},
+    {"chamberGroundH2O", CONTROLLINO_A7},
+    {"detectorGroundH2O", CONTROLLINO_A8},
   };
 
   Pin outputPinLayout[] = {
@@ -413,7 +417,6 @@ void setup() {
   if (!errorStatus) {
     // make sure to set the lenght of normalOperationConfig correctly
     checker.setMachineState(normalOperationConfig, 12);
-    Serial.println("MachineState set in the setupfunction");
   }
 
 }
