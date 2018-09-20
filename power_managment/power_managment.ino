@@ -309,42 +309,6 @@ class Machine {
     }
 
 
-    // void shutdownArea(String name, bool closeOffH2O) {
-    //   // shuts down entire area
-    //   // this is probably to convoluted i.e. to much "minimal form"
-    //   // what happens if the source needs a delay for shutdown and the detector doesnt?
-    //   // i think your overthinking this. A little repetition in your code isnt too bad
-
-    //   // the if cases dont work that way. The variables are only defined inside their scopes
-    //   // and using a pointer to predefined arrays for each area does not work because the
-    //   // pointer would loose the information about the array lenght.
-    //   // c++ is surprisingly difficult to use
-    //   // solution: you can just pass the array of outputs as a parameter to the function
-
-    //   if (name == "source") {
-    //     String closeOutputs[] = { "sourcePump1", "sourcePump2",
-    //                               "heliumSource", "vacuumChamberValve"};
-    //     String closeH2O = "sourceH2O";
-    //   } else if (name == "chamber") {
-    //     String closeOutputs[] = { "chamberPump1", "chamberPump2",
-    //                               "heliumSource", "vacuumChamberValve", "vacuumDetectorValve"};
-    //     String closeH2O = "chamberH2O";
-    //   } else if (name == "detector") {
-    //     String closeOutputs[] = { "detectorPump1", "detectorPump2",
-    //                               "heliumSource", "vacuumDetectorValve"};
-    //     String closeH2O = "detectorH2O";
-    //   }
-    
-    //   for (auto & i : closeOutputs) {
-    //     outHandler.setOutput(i, 0);
-    //   }
-    //   if (closeOffH2O) {
-    //     outHandler.setOutput(closeH2O, 0)
-    //   }
-    // }
-
-
-
 };
 
 
