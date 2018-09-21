@@ -312,14 +312,15 @@ class Machine {
 };
 
 
-// dont forget to set the template parameter correctly
+// dont forget to set the template parameters to : number of entries in inputPinLayout
+// and outputPinLayout respectively
 Machine <9, 12> checker;
 
 
 void setup() {
 
   // Setup the whole machine. All pin configurations go here!
-  // For the PinState a default value of 0 is set because is is a standart type.
+  // For the PinState a default value of 0 is set.
   // Remember to set the template parameter (the values inside < >)
   // at the Machine init correctly.
   Pin inputPinLayout[] = {
@@ -379,7 +380,7 @@ void setup() {
   delay(1);
   int errorStatus = checker.checkAndReact();
   if (!errorStatus) {
-    // make sure to set the lenght of normalOperationConfig correctly
+    // make sure to set the lenght of normalOperationConfig correctly (second parameter in below function)
     checker.setMachineState(normalOperationConfig, 12);
   }
 
