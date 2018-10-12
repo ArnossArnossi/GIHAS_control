@@ -34,6 +34,18 @@ void sendJson(JsonObject & root){
   Serial.println();
 }
 
+template <size_t N> void jsonAddArray(JsonObject & someRoot, String name, int (&ar)[N]) {
+  // Add an int array to a json object.
+  // Parameters: someRoot, json object
+  //             name, name of the array
+  //             ar, reference to in array to be stored          
+  JsonArray& someArray = someRoot.createNestedArray(name);
+  for (int i=0; i<N; i++) {
+    someArray.add(ar[i]);
+  }
+}
+
+
 
 //TODO make name and number constant again somehow
 struct Pin {
@@ -46,6 +58,22 @@ struct Pin {
 struct Dict {
   String key;
   int value;
+
+  Dict(String key = "", int value = 0) : key(key), value(value) {}
+};
+
+template <size_t N>
+struct ArInit {
+  // helper struct for "easy" input of parameters to map method
+  // easy here means needlesly complicated and fucking stupid
+    int ar[N];
+  
+  // custom constructor cannot be used because implicit list initialization
+  // would be overwritten and cannot be reimplemented because std cant be used
+
+    int& operator[](int i) {
+      return ar[i];
+    }
 };
 
 
@@ -65,6 +93,25 @@ class Inputs {
         inputData[i] = pinLayout[i];
         // TODO:rethink if it is really needed to read here
         inputData[i].pinState = digitalRead(inputData[i].pinNumber);
+      }
+    }
+
+    int getPinID(String pinName) {
+      // Return the position (i.e. id) of pin with name pinName
+      // in inputData
+      // Parameters: String pinName: name of pin to be found
+      // Return: int, # element in inputData
+      for (int i=0; i<MAX_INPUT_SIZE; i++) {
+        if (inputData[i].pinName == pinName) {
+          return i;
+      String errorMessage = "No Input with name: " + pinName + " found.";
+      JsonObject & root = buildJson("error");
+      root["error"] = errorMessage;
+      sendJson(root);
+      // no error catching is attempted
+      // if the name is not found the program should fail horribly and obviously
+      // NOTE: all mapings need to be tested beforehand in simulation
+        }
       }
     }
 
@@ -118,6 +165,7 @@ class Inputs {
 
       for (int i=0; i<MAX_INPUT_SIZE; i++) {
         if (toBeChecked[i] == 2) {
+          // TODO check if this clause is actually stept into
           continue;
         }
         if (toBeChecked[i] != inputData[i].pinState) {
@@ -192,6 +240,25 @@ public:
         digitalWrite(outputData[i].pinNumber, 0);
       }
     }
+
+    int getPinID(String pinName) {
+      // Return the position (i.e. id) of pin with name pinName
+      // in in/ouputdata
+      // Parameters: String pinName: name of pin to be found
+      // Return: int, # element in input ot ouputData
+      for (int i=0; i<MAX_OUTPUT_SIZE; i++) {
+        if (outputData[i].pinName == pinName) {
+          return i;
+      String errorMessage = "No Output with name: " + pinName + " found.";
+      JsonObject & root = buildJson("error");
+      root["error"] = errorMessage;
+      sendJson(root);
+      // no error catching is attempted
+      // if the name is not found the program should fail horribly and obviously
+      // NOTE: all mapings need to be tested beforehand in simulation
+        }
+      }
+    }
     
     void setOutput(String outputName, int stateValue) {
       // set state of the Pin with outputName to stateValue
@@ -238,7 +305,7 @@ public:
         }
       }
       JsonObject & root = buildJson("setAllOutputs");
-      root["output"] = configArray;
+      jsonAddArray(root, "output", configArray);
       sendJson(root);
     }
 
@@ -297,136 +364,118 @@ public:
 
     }
 
+};
 
-   void shutdownSource(bool closeOffH2O) {
-      // shutdown source. ugly repetion galore
-      setOutput("heliumSource", 0);
-      setOutput("sourcePump_1", 0);
-      setOutput("sourcePump_2", 0);
-      if (closeOffH2O) {
-        setOutput("sourceH2O", 0);
-      }
-      setOutput("vacuumChamberValve", 0);
+class Machine {
 
-      JsonObject & root = buildJson("shutdownSource");
-      root["warn"] = "Source shut down. Cooling water closing : " + String(closeOffH2O);
-      for (const auto & i : outputData) {
-        root[i.pinName] = i.pinState;
-      }
-      sendJson(root);
+  private:
+
+    Inputs input;
+    Outputs output;
+
+  public:
+
+    // flag to check wether loop() has run once
+    bool firstLoopFinished = false;
+
+    // flag to indicate wether a sensor is showing an error
+    bool sensorError = false;
+
+    Machine() {}
+
+    void begin(Pin inputPinLayout[], Pin outputPinLayout[]) {
+      // constructor method with different name to call after initialzation
+      input.begin(inputPinLayout);
+      output.begin(outputPinLayout);
     }
 
-    void shutdownChamber(bool closeOffH2O) {
-     setOutput("heliumSource", 0);
-     setOutput("chamberPump_1", 0);
-     setOutput("chamberPump_2", 0);
-     if (closeOffH2O) {
-       setOutput("chamberH2O", 0);
-     }
-     setOutput("vacuumChamberValve", 0);
-     setOutput("vacuumDetectorValve", 0);
-
-    JsonObject & root = buildJson("shutdownChamber");
-    root["warn"] = "Chamber shut down. Cooling water closing : " + String(closeOffH2O);
-    for (const auto & i : outputData) {
-      root[i.pinName] = i.pinState;
+    template <size_t N>
+    void setOutput(Dict (&out)[N]) {
+      // stupid passalong of some bullshit. the overloading in outputs
+      // is now completly useless because it cant be reached anymore
+      // and set output should not be used from outside Machine if we were
+      // serious about data encapsulation but who cares!!!
+      output.setOutput(out);
     }
-    sendJson(root);
-  }
 
-    void shutdownDetector(bool closeOffH2O) {
-      setOutput("heliumSource", 0);
-      setOutput("detectorPump_1", 0);
-      setOutput("detectorPump_2", 0);
-      if (closeOffH2O) {
-        setOutput("detectorH2O", 0);
-      }
-      setOutput("vacuumDetectorValve", 0);
+    bool mapImpl(int (&inputArray)[MAX_INPUT_SIZE], int (&outputArray)[MAX_OUTPUT_SIZE]) {
+      // Set all outputs to a given state if all inputs are in a given state.
+      // Parameters: inputArray: int array of length MAX_INPUT_SIZE
+      //             elements can be: 0: check if state of pin on same position
+      //                                 in the inputPinLayout is 0
+      //                              1: check if state of pin is 1
+      //                              2: do not check state of pin
+      //             outputArray: int array of length MAX_OUTPUT_SIZE
+      //             elements can be: 0: set state to 0
+      //                              1: set state to 1
+      //                              2: do not set state
+      // Returns: false: if output is not changed
+      //          true: if output is changed
 
-      JsonObject & root = buildJson("shutdownDetector");
-      root["warn"] = "Detector shut down. Cooling water closing : " + String(closeOffH2O);
-      for (const auto & i : outputData) {
-        root[i.pinName] = i.pinState;
+      if (output.isAllreadySet(outputArray) && firstLoopFinished) {
+        // do not repeat test if output is allready set anyway
+        // but do it anyway if we are in the first loop, i.e. before normal operation
+        return false;
       }
-      sendJson(root);
+
+      if (input.compare(inputArray)) {
+        output.setOutput(outputArray);
+        sensorError = true;
+        JsonObject & root = buildJson("sensorEvent");
+        jsonAddArray(root, "input", inputArray);
+        jsonAddArray(root, "output", outputArray);
+        sendJson(root);
+        return true;
+      }
+      return false;
+    }
+
+    bool map(ArInit<MAX_INPUT_SIZE> in, ArInit<MAX_OUTPUT_SIZE> out) {
+      // map for "easy" usage, meaning initialsation of in and out array inside map call
+      return mapImpl(in.ar, out.ar);
+    }
+
+    bool map(Dict in, ArInit<MAX_OUTPUT_SIZE> out) {
+      // Overoading of map. All overloaded mappings just refer
+      // the logic to mapping-method with complete in and out arrays
+//      tempInputArray[input.getPinID(in.key)] = in.value;
+      ArInit<MAX_INPUT_SIZE> inArray;
+      for (int i=0; i<MAX_INPUT_SIZE; i++) inArray[i] = 2;
+      inArray[input.getPinID(in.key)] = in.value;
+      return mapImpl(inArray.ar, out.ar);
+    }
+
+    bool map(ArInit<MAX_INPUT_SIZE> in, Dict out) {
+      // Overoading of map.
+      ArInit<MAX_OUTPUT_SIZE> outArray;
+      for (int i=0; i<MAX_OUTPUT_SIZE; i++) outArray[i] = 2;
+      outArray[output.getPinID(out.key)] = out.value;
+      return mapImpl(in.ar, outArray.ar);
+    }
+
+    bool map(Dict in, Dict out) {
+      // Overoading of map.
+      ArInit<MAX_INPUT_SIZE> inArray;
+      for (int i=0; i<MAX_INPUT_SIZE; i++) inArray[i] = 2;
+      inArray[input.getPinID(in.key)] = in.value;
+      ArInit<MAX_OUTPUT_SIZE> outArray;
+      for (int i=0; i<MAX_OUTPUT_SIZE; i++) outArray[i] = 2;
+      outArray[output.getPinID(out.key)] = out.value;
+      return mapImpl(inArray.ar, outArray.ar);
     }
 
 };
 
 
-// class Machine {
-
-//   private:
-
-    
-//     // controlparameters for responses to sensor signal
-//     bool sourceFullShutdown = false, sourceSoftShutdown = false;
-//     bool chamberFullShutdown = false, chamberSoftShutdown = false;
-//     bool detectorFullShutdown = false, detectorSoftShutdown = false;
-
-//     // list of water flow sensors to be checked
-//     // defined here so they dont get initilized each time a check is done
-//     String sourceFlowSensors[2] = {"sourceFlow_1", "sourceFlow_2"};
-//     String chamberFlowSensors[2] = {"chamberFlow_1", "chamberFlow_2"};
-//     String detectorFlowSensors[2] = {"detectorFlow_1", "detectorFlow_2"};
-    
-
-//     }
-
-//     // temp sensors will probably be implemented in the same way as water flow sensors are
-//     // this is alot of boilerplate code which seems unnecessary but I should finish this first
-//     // and then try to make this prettier.
-
-   
-
-// };
-
-
-// dont forget to set the template parameters to : 
-// number of entries in inputPinLayout and outputPinLayout respectively
-// initilized here so they are global variables
-Inputs input;
-Outputs output;
-
-// flag to check wether loop() has run once
-bool firstLoopFinished = false;
-
-// flag to indicate wether a sensor is showing an error
-bool sensorError = false;
-
-
-bool mapInputToOutput(int (&inputArray)[MAX_INPUT_SIZE], int (&outputArray)[MAX_OUTPUT_SIZE]) {
-  // Set all outputs to a given state if all inputs are in a given state.
-  // Parameters: inputArray: int array of length MAX_INPUT_SIZE
-  //             elements can be: 0: check if state of pin on same position
-  //                                 in the inputPinLayout is 0
-  //                              1: check if state of pin is 1
-  //                              2: do not check state of pin
-  //             outputArray: int array of length MAX_OUTPUT_SIZE
-  //             elements can be: 0: set state to 0
-  //                              1: set state to 1
-  //                              2: do not set state
-
-  if (output.isAllreadySet(outputArray)) {
-    return false; // do not repeat test if output is allready set anyway
-  }
-
-  if (input.compare(inputArray)) {
-    output.setOutput(outputArray);
-    sensorError = true;
-    return true;
-  }
-}
-
-//TODO: overload mapInput...aber die muss eh wieder geändert werden also mal schauen
+Machine controller;
 
 
 void setup() {
 
   // Setup the whole machine. All pin configurations go here!
   // For the PinState a default value of 0 is set.
-  // Remember to set the template parameter (the values inside < >)
-  // at the Inputs and Outputs init correctly.
+  // Remember to set MAX_INPUT_SIZE and MAX_OUTPUT_SIZE at the beginning of this
+  // script correctly, i.e. length of input and output layout respectively.
   Pin inputPinLayout[] = {
     {"sourceFlow_1", CONTROLLINO_A0},
     {"sourceFlow_2", CONTROLLINO_A1},
@@ -464,13 +513,13 @@ void setup() {
     }
   }
 
-  // initilize input and output pins
+  // initilize controller with input and output pins
   // read inputs and set accordingly, set outputs to 0
-  input.begin(inputPinLayout);
-  output.begin(outputPinLayout);
+  controller.begin(inputPinLayout, outputPinLayout);
 
   //wait a bit. seems to be needed to set everything up correctly
   delay(1);
+
 
 }
 
@@ -478,7 +527,6 @@ Dict normalOperationConfig[] = {
   // initial output state if no errors are detected
   // this needs be live in the global scope (so not in setup())
   // because it is needed inside of loop()
-  // but can be made much smaller in size (see overloading in Outputs)
   {"heliumSource", 1},
   {"sourcePump_1", 1},
   {"sourcePump_2", 1},
@@ -493,91 +541,31 @@ Dict normalOperationConfig[] = {
   {"vacuumDetectorValve", 1}
 };
 
+Dict in;
+ArInit<MAX_OUTPUT_SIZE> out;
 
 void loop() {
 
-// // important part: all health checks are defined here
-//   // returns: int as error status
-//   // one could also check all inputs at start and 
-//   int error = 0;
 
-//   // ground water test
-  
-//   if (inHandler.getInputState("sourceGroundH2O") == 1 && !sourceFullShutdown) {
-//     JsonObject & root = buildJson("sensorEventGroundH2O");
-//     root["warn"] = "Ground water on source detected!";
-//     sendJson(root);
-//     shutdownSource(true);
-//     sourceFullShutdown = true;
-//   }
+  // water flow check (shut down entire area but not water intake)
+  controller.map(in = {"sourceFlow_1", 1}, out = {0,0,0,2,2,2,2,2,2,2,0,2});
+  controller.map(in = {"sourceFlow_2", 1}, out = {0,0,0,2,2,2,2,2,2,2,0,2});
+  controller.map(in = {"chamberFlow_1", 1}, out = {0,2,2,0,0,2,2,2,2,2,0,0});
+  controller.map(in = {"chamberFlow_2", 1}, out = {0,2,2,0,0,2,2,2,2,2,0,0});
+  controller.map(in = {"detectorFlow_1", 1}, out = {0,2,2,2,2,0,0,2,2,2,2,0});
+  controller.map(in = {"detectorFlow_2", 1}, out = {0,2,2,2,2,0,0,2,2,2,2,0});
 
-//   if (inHandler.getInputState("chamberGroundH2O") == 1 && !chamberFullShutdown) {
-//     JsonObject & root = buildJson("sensorEventGroundH2O");
-//     root["warn"] = "Ground water on scattering chamber detected!";
-//     sendJson(root);
-//     shutdownChamber(true);
-//     chamberFullShutdown = true;
-//   }
-
-//   if (inHandler.getInputState("detectorGroundH2O") == 1 && !detectorFullShutdown) {
-//     JsonObject & root = buildJson("sensorEventGroundH2O");
-//     root["warn"] = "Ground water on detector found!";
-//     sendJson(root);
-//     shutdownDetector(true);
-//     detectorFullShutdown = true;
-//   }
-
-//   // water flow test
-//   if (!sourceSoftShutdown && !sourceFullShutdown) {
+  // ground water check (shut down entire area and also water intake)
+  controller.map(in = {"sourceGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,0,2});
+  controller.map(in = {"chamberGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,0,0});
+  controller.map(in = {"detectorGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,2,0});
 
 
-//     for (auto & i : sourceFlowSensors) {
-//       if (inHandler.getInputState(i) == 1) {
-//         JsonObject & root = buildJson("sensorEventH2OFlow");
-//         root["warn"] = "Waterflow below critical level!";
-//         root[i] = 1;
-//         sendJson(root);
-//         shutdownSource(false);
-//         sourceSoftShutdown = true;
-//       }
-//     }
-//   }
-
-//   if (!chamberSoftShutdown && !chamberFullShutdown) {
-//     for (auto & i : chamberFlowSensors) {
-//       if (inHandler.getInputState(i) == 1) {
-//         JsonObject & root = buildJson("sensorEventH2OFlow");
-//         root["warn"] = "Waterflow below critical level!";
-//         root[i] = 1;
-//         sendJson(root);
-//         shutdownChamber(false);
-//         chamberSoftShutdown = true;
-//       }
-//     }
-//   }
-
-//   if (!detectorSoftShutdown && !detectorFullShutdown) {
-//     for (auto & i : detectorFlowSensors) {
-//       if (inHandler.getInputState(i) == 1) {
-//         JsonObject & root = buildJson("sensorEventH2OFlow");
-//         root["warn"] = "Waterflow below critical level!";
-//         root[i] = 1;
-//         sendJson(root);
-//         shutdownDetector(false);
-//         detectorSoftShutdown = true;
-//       }
-//     }
-//   }
-  int foo[] = {2,2,2,2,2,2,2,2,2};
-  int bar[] = {2,2,2,2,2,2,2,2,2,2,2,2};
-  bool some = false;
-  some = mapInputToOutput(foo, bar);
-
-  if (!firstLoopFinished && !sensorError) {
+  if (!controller.firstLoopFinished && !controller.sensorError) {
     // if no inputs are showing errors and only if loop()
     // is run the first time: set output to normalOperationConfig
-    output.setOutput(normalOperationConfig);
-    firstLoopFinished = true;
+    controller.setOutput(normalOperationConfig);
+    controller.firstLoopFinished = true;
   }
 
 }
