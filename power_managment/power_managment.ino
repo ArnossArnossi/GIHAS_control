@@ -81,8 +81,11 @@ class Inputs {
 
   private:
     Pin inputData[MAX_INPUT_SIZE];
- 
+
   public:
+    // should be initialized to array of zeros.
+    int inputRepr[MAX_INPUT_SIZE] = {};
+
     Inputs() {}
 
     void begin(Pin pinLayout[]) {
@@ -91,8 +94,7 @@ class Inputs {
       for (int i = 0; i < MAX_INPUT_SIZE; i++) {
         pinMode(pinLayout[i].pinNumber, INPUT);
         inputData[i] = pinLayout[i];
-        // TODO:rethink if it is really needed to read here
-        inputData[i].pinState = digitalRead(inputData[i].pinNumber);
+        inputRepr[i] = inputData[i].pinState = digitalRead(inputData[i].pinNumber);
       }
     }
 
@@ -118,37 +120,22 @@ class Inputs {
     void update() {
       // Update the states of all pins in inputData to current value.
 
-      for (auto & pin : inputData) {
-        pin.pinState = digitalRead(pin.pinNumber);
+      for (int i=0; i<MAX_INPUT_SIZE; i++) {
+        inputRepr[i] = inputData[i].pinState = digitalRead(inputData[i].pinNumber);
       }
     }
-    
-    const Pin * getAllInputs() {
-      // read out all inputs, store them in inputData and return constant reference to them
-      // and because c++ is being a bitch one has to pass a pointer to inputData instead
-      // of a reference and the number of elements is lost in the translation
-      // it feels like the whole class structure is wrong and that one shouldnt need to pass
-      // an array around anyway.
 
-      update();
-      return inputData;
-    }
-
-    int getInputState(String sensor) {
-      // return current value for sensor by string as int
-      // TODO: maybe also return name and pin but only if needed
-
-      for (auto & i : inputData) {
-        if (i.pinName == sensor) {
-          i.pinState = digitalRead(i.pinNumber);
-          return i.pinState;
+    int * getChanges() {
+      // Check if any input state has changed, if so return the index of that input pin
+      // Returns: int, index of changed input pin or -1 if no input hat changed.
+      for (int i=0; i<MAX_INPUT_SIZE; i++) {
+        int tempInput = digitalRead(inputData[i].pinNumber);
+        if (inputData[i].pinState != tempInput) {
+          inputRepr[i] = inputData[i].pinState = tempInput;
+          return i;
         }
       }
-      String errorMessage = "No Input with name: " + sensor + " found. Returning 0.";
-      JsonObject & root = buildJson("error");
-      root["error"] = errorMessage;
-      sendJson(root);
-      return 0;
+      return -1;
     }
 
     bool compare(int (&toBeChecked)[MAX_INPUT_SIZE]) {
@@ -182,7 +169,7 @@ class Inputs {
       // Parameters: toBeChecked: Dict structure with key: name of pin
       //                                              value: expected state
       // Returns: true: if pin name with same state is found in inputData
-      //          false: all other cases 
+      //          false: all other cases
       update();
 
       for (auto & j : inputData) {
@@ -373,6 +360,8 @@ class Machine {
     Inputs input;
     Outputs output;
 
+    int mmapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE];
+
   public:
 
     // flag to check wether loop() has run once
@@ -383,10 +372,16 @@ class Machine {
 
     Machine() {}
 
-    void begin(Pin inputPinLayout[], Pin outputPinLayout[]) {
+    void begin(Pin inputPinLayout[], Pin outputPinLayout[], int mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE]) {
       // constructor method with different name to call after initialzation
       input.begin(inputPinLayout);
       output.begin(outputPinLayout);
+
+      for (int i=0; i<MAX_INPUT_SIZE; i++) {
+        for (int j=0; j<MAX_OUTPUT_SIZE; j++) {
+          mmapping[i][j] = mapping[i][j];
+        }
+      }
     }
 
     template <size_t N>
@@ -396,6 +391,21 @@ class Machine {
       // and set output should not be used from outside Machine if we were
       // serious about data encapsulation but who cares!!!
       output.setOutput(out);
+    }
+
+    void runAllMappings() {
+      // Check if input has changed. If so set output to defined output in mmapping.
+      // Carefull: the output is also set if the input changes back to normal
+      int changedIndex = input.getChanges();
+      if (changedIndex != -1) {
+        sensorError = true;
+        output.setOutput(mmapping[changedIndex]);
+
+        JsonObject & root = buildJson("sensorEvent");
+        jsonAddArray(root, "input", input.inputRepr);
+        jsonAddArray(root, "output", mmapping[changedIndex]);
+        sendJson(root);
+      }      
     }
 
     bool mapImpl(int (&inputArray)[MAX_INPUT_SIZE], int (&outputArray)[MAX_OUTPUT_SIZE]) {
@@ -438,7 +448,6 @@ class Machine {
     bool map(Dict in, ArInit<MAX_OUTPUT_SIZE> out) {
       // Overoading of map. All overloaded mappings just refer
       // the logic to mapping-method with complete in and out arrays
-//      tempInputArray[input.getPinID(in.key)] = in.value;
       ArInit<MAX_INPUT_SIZE> inArray;
       for (int i=0; i<MAX_INPUT_SIZE; i++) inArray[i] = 2;
       inArray[input.getPinID(in.key)] = in.value;
@@ -501,7 +510,18 @@ void setup() {
     {"detectorH2O", CONTROLLINO_D9},
     {"vacuumChamberValve", CONTROLLINO_D10},
     {"vacuumDetectorValve", CONTROLLINO_D11}
-  
+  };
+
+  int mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
+    {0,0,0,2,2,2,2,2,2,2,0,2},
+    {0,0,0,2,2,2,2,2,2,2,0,2},
+    {0,2,2,0,0,2,2,2,2,2,0,0},
+    {0,2,2,0,0,2,2,2,2,2,0,0},
+    {0,2,2,2,2,0,0,2,2,2,2,0},
+    {0,2,2,2,2,0,0,2,2,2,2,0},
+    {0,0,0,2,2,2,2,0,2,2,0,2},
+    {0,0,0,2,2,2,2,0,2,2,0,0},
+    {0,0,0,2,2,2,2,0,2,2,2,0}
   };
 
   // start Serial and check if its connected correctly
@@ -515,7 +535,7 @@ void setup() {
 
   // initilize controller with input and output pins
   // read inputs and set accordingly, set outputs to 0
-  controller.begin(inputPinLayout, outputPinLayout);
+  controller.begin(inputPinLayout, outputPinLayout, mapping);
 
   //wait a bit. seems to be needed to set everything up correctly
   delay(1);
@@ -546,19 +566,20 @@ ArInit<MAX_OUTPUT_SIZE> out;
 
 void loop() {
 
+  controller.runAllMappings();
 
-  // water flow check (shut down entire area but not water intake)
-  controller.map(in = {"sourceFlow_1", 1}, out = {0,0,0,2,2,2,2,2,2,2,0,2});
-  controller.map(in = {"sourceFlow_2", 1}, out = {0,0,0,2,2,2,2,2,2,2,0,2});
-  controller.map(in = {"chamberFlow_1", 1}, out = {0,2,2,0,0,2,2,2,2,2,0,0});
-  controller.map(in = {"chamberFlow_2", 1}, out = {0,2,2,0,0,2,2,2,2,2,0,0});
-  controller.map(in = {"detectorFlow_1", 1}, out = {0,2,2,2,2,0,0,2,2,2,2,0});
-  controller.map(in = {"detectorFlow_2", 1}, out = {0,2,2,2,2,0,0,2,2,2,2,0});
+  // // water flow check (shut down entire area but not water intake)
+  // controller.map(in = {"sourceFlow_1", 1}, out = {0,0,0,2,2,2,2,2,2,2,0,2});
+  // controller.map(in = {"sourceFlow_2", 1}, out = {0,0,0,2,2,2,2,2,2,2,0,2});
+  // controller.map(in = {"chamberFlow_1", 1}, out = {0,2,2,0,0,2,2,2,2,2,0,0});
+  // controller.map(in = {"chamberFlow_2", 1}, out = {0,2,2,0,0,2,2,2,2,2,0,0});
+  // controller.map(in = {"detectorFlow_1", 1}, out = {0,2,2,2,2,0,0,2,2,2,2,0});
+  // controller.map(in = {"detectorFlow_2", 1}, out = {0,2,2,2,2,0,0,2,2,2,2,0});
 
-  // ground water check (shut down entire area and also water intake)
-  controller.map(in = {"sourceGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,0,2});
-  controller.map(in = {"chamberGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,0,0});
-  controller.map(in = {"detectorGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,2,0});
+  // // ground water check (shut down entire area and also water intake)
+  // controller.map(in = {"sourceGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,0,2});
+  // controller.map(in = {"chamberGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,0,0});
+  // controller.map(in = {"detectorGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,2,0});
 
 
   if (!controller.firstLoopFinished && !controller.sensorError) {

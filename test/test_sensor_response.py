@@ -88,20 +88,20 @@ class TestSensorResponse(object):
                     print(e)
 
     def setup_class(self):
-        self.ser = enable_connection()
         init_outputs()
 
     def teardown_class(self):
         close_outputs()
-        self.ser.close()
 
     def setup_method(self):
         # this should reset the controllino -> wait a bit for reseting
+        self.ser = enable_connection()
         reset_serial_and_controllino(self.ser)
 
     def teardown_method(self):
         # set all output pins to off (meaning high with active_low enabled
         disable_outputs()
+        self.ser.close()
 
     @pytest.mark.parametrize("sensor, expected_output", [
         ("sourceFlow_1", [0,0,0,2,2,2,2,2,2,2,0,2]),
