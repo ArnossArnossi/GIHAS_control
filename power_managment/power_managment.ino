@@ -1,10 +1,16 @@
 #include "Controllino.h"
 #include "ArduinoJson.h"
+#include <Ethernet.h>
 
 
+const int MAX_INPUT_SIZE = 9; // number of input elements
+const int MAX_OUTPUT_SIZE = 12; // number of outputs elements
 
-const int MAX_INPUT_SIZE = 9;
-const int MAX_OUTPUT_SIZE = 12;
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; // MAC address for controllino.
+IPAddress ip(192, 168, 2, 5); // the static IP address of controllino
+IPAddress server(192,168,2,10);  // numeric IP of the server i.e. rpi
+
+EthernetClient client; // start ethernet client
 
 
 JsonObject & buildJson (String type){
@@ -29,9 +35,9 @@ void sendJson(JsonObject & root){
   }
   // if the JSONbuffer is to small the program hangs at printTo() and the endl;
   // charecter after that never gets send
-  root.printTo(Serial);
+  root.printTo(client);
   // only needed if we seperate incoming streams via readline()f
-  Serial.println();
+  client.println();
 }
 
 template <size_t N> void jsonAddArray(JsonObject & someRoot, String name, int (&ar)[N]) {
@@ -46,8 +52,6 @@ template <size_t N> void jsonAddArray(JsonObject & someRoot, String name, int (&
 }
 
 
-
-//TODO make name and number constant again somehow
 struct Pin {
   String pinName;
   int pinNumber;
@@ -61,6 +65,7 @@ struct Dict {
 
   Dict(String key = "", int value = 0) : key(key), value(value) {}
 };
+
 
 template <size_t N>
 struct ArInit {
@@ -82,6 +87,9 @@ class Inputs {
   private:
     Pin inputData[MAX_INPUT_SIZE];
 
+    // expected values for input. Will be set at initiation of Input
+    int normalInput[MAX_INPUT_SIZE];
+
   public:
     // should be initialized to array of zeros.
     int inputRepr[MAX_INPUT_SIZE] = {};
@@ -94,7 +102,12 @@ class Inputs {
       for (int i = 0; i < MAX_INPUT_SIZE; i++) {
         pinMode(pinLayout[i].pinNumber, INPUT);
         inputData[i] = pinLayout[i];
-        inputRepr[i] = inputData[i].pinState = digitalRead(inputData[i].pinNumber);
+        inputRepr[i] = inputData[i].pinState;
+        // pinState is getting misused here a bit. The defined pinState
+        // in pinLayout is the expected pinstate for normalInput
+        // And the saved pinState could be different from the acctual state right now
+        // which is needed so the checking befor normalOutput is set can be done
+        normalInput[i] = pinLayout[i].pinState;
       }
     }
 
@@ -126,13 +139,16 @@ class Inputs {
     }
 
     int * getChanges() {
-      // Check if any input state has changed, if so return the index of that input pin
+      // Check if any input state has changed to something different than the
+      // expected input. If so return the index of that input pin
       // Returns: int, index of changed input pin or -1 if no input hat changed.
       for (int i=0; i<MAX_INPUT_SIZE; i++) {
         int tempInput = digitalRead(inputData[i].pinNumber);
         if (inputData[i].pinState != tempInput) {
           inputRepr[i] = inputData[i].pinState = tempInput;
-          return i;
+          if (tempInput!=normalInput[i]) {
+            return i;
+          }
         }
       }
       return -1;
@@ -211,11 +227,16 @@ class Inputs {
 
 class Outputs {
 
-private:
+  private:
     Pin outputData[MAX_OUTPUT_SIZE];
 
+    int normalOutput[MAX_OUTPUT_SIZE];
+
   
-public:
+  public:
+    // should be initialized to array of zeros.
+    int outputRepr[MAX_OUTPUT_SIZE] = {};
+
     Outputs() {}
     
     void begin(Pin pinLayout[]) {
@@ -223,6 +244,8 @@ public:
       for (int i = 0; i < MAX_OUTPUT_SIZE; i++) {
         pinMode(pinLayout[i].pinNumber, OUTPUT);
         outputData[i] = pinLayout[i];
+        // as in Inputs pinState is getting misused a bit
+        normalOutput[i] = pinLayout[i].pinState;
         outputData[i].pinState = 0; // make sure all outputs are off initially
         digitalWrite(outputData[i].pinNumber, 0);
       }
@@ -250,12 +273,13 @@ public:
     void setOutput(String outputName, int stateValue) {
       // set state of the Pin with outputName to stateValue
 
-      for (auto& pin : outputData) {
-        if (pin.pinName == outputName) {
-          digitalWrite(pin.pinNumber, stateValue);
-          pin.pinState = stateValue;
+      for (int i=0; i<MAX_OUTPUT_SIZE; i++) {
+        if (outputData[i].pinName == outputName) {
+          digitalWrite(outputData[i].pinNumber, stateValue);
+          outputData[i].pinState = stateValue;
+          outputRepr[i] = stateValue;
           JsonObject & root = buildJson("setOut");
-          root[pin.pinName] = stateValue;
+          root[outputData[i].pinName] = stateValue;
           sendJson(root);
           return;
         }
@@ -288,12 +312,18 @@ public:
       for (int i = 0; i < MAX_OUTPUT_SIZE; i++) {
         if (configArray[i] < 2) {
           digitalWrite(outputData[i].pinNumber, configArray[i]);
-          outputData[i].pinState = configArray[i];          
+          outputData[i].pinState = configArray[i];
+          outputRepr[i] = configArray[i];
         }
       }
       JsonObject & root = buildJson("setAllOutputs");
-      jsonAddArray(root, "output", configArray);
+      jsonAddArray(root, "changedOut", configArray);
+      jsonAddArray(root, "totalOut", outputRepr);
       sendJson(root);
+    }
+
+    void setNormalOutput() {
+      setOutput(normalOutput);
     }
 
     bool isAllreadySet(int (&toBeChecked)[MAX_OUTPUT_SIZE]) {
@@ -364,9 +394,6 @@ class Machine {
 
   public:
 
-    // flag to check wether loop() has run once
-    bool firstLoopFinished = false;
-
     // flag to indicate wether a sensor is showing an error
     bool sensorError = false;
 
@@ -381,6 +408,21 @@ class Machine {
         for (int j=0; j<MAX_OUTPUT_SIZE; j++) {
           mmapping[i][j] = mapping[i][j];
         }
+      }
+    }
+
+    void checkAndEnableNormalOutput() {
+      // Check if input is different from normalInput, i.e. the expected input states.
+      // This only works if the inputData is set to the normalInput in the beginning
+      // and not the acctual state of the inputs pins.
+      int index = input.getChanges();
+      if (index == -1) {
+        output.setNormalOutput();
+      } else {
+        sensorError = true;
+        JsonObject & root = buildJson("startupError");
+        root["changedIn"] = index;
+        sendJson(root);
       }
     }
 
@@ -399,11 +441,17 @@ class Machine {
       int changedIndex = input.getChanges();
       if (changedIndex != -1) {
         sensorError = true;
-        output.setOutput(mmapping[changedIndex]);
+        if (!output.isAllreadySet(mmapping[changedIndex])){
+          // i'm not sure if this has any benefit because right now everthing is only
+          // set to 0s and when we use delayed responces thing will change again anyway
+          output.setOutput(mmapping[changedIndex]);
+        }
 
         JsonObject & root = buildJson("sensorEvent");
-        jsonAddArray(root, "input", input.inputRepr);
-        jsonAddArray(root, "output", mmapping[changedIndex]);
+        jsonAddArray(root, "totalIn", input.inputRepr);
+        root["changedIn"] = changedIndex;
+        jsonAddArray(root, "changedOut", mmapping[changedIndex]);
+        jsonAddArray(root,"totalOut", output.outputRepr);
         sendJson(root);
       }      
     }
@@ -421,10 +469,14 @@ class Machine {
       //                              2: do not set state
       // Returns: false: if output is not changed
       //          true: if output is changed
+      //
+      // Usage example:
+      //    Dict in;
+      //    ArInit<MAX_OUTPUT_SIZE> out;
+      //    controller.map(in = {"sourceFlow_2", 1}, out = {0,0,0,2,2,2,2,2,2,2,0,2});
 
-      if (output.isAllreadySet(outputArray) && firstLoopFinished) {
+      if (output.isAllreadySet(outputArray)) {
         // do not repeat test if output is allready set anyway
-        // but do it anyway if we are in the first loop, i.e. before normal operation
         return false;
       }
 
@@ -481,35 +533,36 @@ Machine controller;
 
 void setup() {
 
+
   // Setup the whole machine. All pin configurations go here!
-  // For the PinState a default value of 0 is set.
+  // The pinstate describes the normal (i.e. expected) input and output state
   // Remember to set MAX_INPUT_SIZE and MAX_OUTPUT_SIZE at the beginning of this
   // script correctly, i.e. length of input and output layout respectively.
   Pin inputPinLayout[] = {
-    {"sourceFlow_1", CONTROLLINO_A0},
-    {"sourceFlow_2", CONTROLLINO_A1},
-    {"chamberFlow_1", CONTROLLINO_A2},
-    {"chamberFlow_2", CONTROLLINO_A3},
-    {"detectorFlow_1", CONTROLLINO_A4},
-    {"detectorFlow_2", CONTROLLINO_A5},
-    {"sourceGroundH2O", CONTROLLINO_A6},
-    {"chamberGroundH2O", CONTROLLINO_A7},
-    {"detectorGroundH2O", CONTROLLINO_A8},
+    {"sourceFlow_1", CONTROLLINO_A0, 0},
+    {"sourceFlow_2", CONTROLLINO_A1, 0},
+    {"chamberFlow_1", CONTROLLINO_A2, 0},
+    {"chamberFlow_2", CONTROLLINO_A3, 0},
+    {"detectorFlow_1", CONTROLLINO_A4, 0},
+    {"detectorFlow_2", CONTROLLINO_A5, 0},
+    {"sourceGroundH2O", CONTROLLINO_A6, 0},
+    {"chamberGroundH2O", CONTROLLINO_A7, 0},
+    {"detectorGroundH2O", CONTROLLINO_A8, 0},
   };
 
   Pin outputPinLayout[] = {
-    {"heliumSource", CONTROLLINO_D0},
-    {"sourcePump_1", CONTROLLINO_D1},
-    {"sourcePump_2", CONTROLLINO_D2},
-    {"chamberPump_1", CONTROLLINO_D3},
-    {"chamberPump_2", CONTROLLINO_D4},
-    {"detectorPump_1", CONTROLLINO_D5},
-    {"detectorPump_2", CONTROLLINO_D6},
-    {"sourceH2O", CONTROLLINO_D7},
-    {"chamberH2O", CONTROLLINO_D8},
-    {"detectorH2O", CONTROLLINO_D9},
-    {"vacuumChamberValve", CONTROLLINO_D10},
-    {"vacuumDetectorValve", CONTROLLINO_D11}
+    {"heliumSource", CONTROLLINO_D0, 1},
+    {"sourcePump_1", CONTROLLINO_D1, 1},
+    {"sourcePump_2", CONTROLLINO_D2, 1},
+    {"chamberPump_1", CONTROLLINO_D3, 1},
+    {"chamberPump_2", CONTROLLINO_D4, 1},
+    {"detectorPump_1", CONTROLLINO_D5, 1},
+    {"detectorPump_2", CONTROLLINO_D6, 1},
+    {"sourceH2O", CONTROLLINO_D7, 1},
+    {"chamberH2O", CONTROLLINO_D8, 1},
+    {"detectorH2O", CONTROLLINO_D9, 1},
+    {"vacuumChamberValve", CONTROLLINO_D10, 1},
+    {"vacuumDetectorValve", CONTROLLINO_D11, 1}
   };
 
   int mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
@@ -528,65 +581,40 @@ void setup() {
   Serial.begin(9600);
   int startTime = millis();
   while(!Serial) {
+    // sanity check
+    Serial.println("Inside while !Serial. Something is very wrong.");
     if (millis() - startTime >= 10000) {
       break;
     }
   }
 
+  // start the Ethernet connection:
+  Ethernet.begin(mac, ip);
+  // give the Ethernet a second to initialize:
+  delay(1000);
+
+  // enable connection with server (rpi) over port 4000
+  if (client.connect(server, 4000)) {
+    Serial.println("Connected.");
+  } else {
+    Serial.println("Connection failed.");
+  }
+
   // initilize controller with input and output pins
-  // read inputs and set accordingly, set outputs to 0
+  // set inputs to expected inputs tempoarily, set outputs to 0
   controller.begin(inputPinLayout, outputPinLayout, mapping);
 
-  //wait a bit. seems to be needed to set everything up correctly
-  delay(1);
+  // Wait a bit. seems to be needed to set everything up correctly
+  delay(500);
 
+  // Check if inputs do not show an error before enableing normal operation
+  controller.checkAndEnableNormalOutput();
 
 }
 
-Dict normalOperationConfig[] = {
-  // initial output state if no errors are detected
-  // this needs be live in the global scope (so not in setup())
-  // because it is needed inside of loop()
-  {"heliumSource", 1},
-  {"sourcePump_1", 1},
-  {"sourcePump_2", 1},
-  {"chamberPump_1", 1},
-  {"chamberPump_2", 1},
-  {"detectorPump_1", 1},
-  {"detectorPump_2", 1},
-  {"sourceH2O", 1},
-  {"chamberH2O", 1},
-  {"detectorH2O", 1},
-  {"vacuumChamberValve", 1},
-  {"vacuumDetectorValve", 1}
-};
-
-Dict in;
-ArInit<MAX_OUTPUT_SIZE> out;
 
 void loop() {
 
   controller.runAllMappings();
-
-  // // water flow check (shut down entire area but not water intake)
-  // controller.map(in = {"sourceFlow_1", 1}, out = {0,0,0,2,2,2,2,2,2,2,0,2});
-  // controller.map(in = {"sourceFlow_2", 1}, out = {0,0,0,2,2,2,2,2,2,2,0,2});
-  // controller.map(in = {"chamberFlow_1", 1}, out = {0,2,2,0,0,2,2,2,2,2,0,0});
-  // controller.map(in = {"chamberFlow_2", 1}, out = {0,2,2,0,0,2,2,2,2,2,0,0});
-  // controller.map(in = {"detectorFlow_1", 1}, out = {0,2,2,2,2,0,0,2,2,2,2,0});
-  // controller.map(in = {"detectorFlow_2", 1}, out = {0,2,2,2,2,0,0,2,2,2,2,0});
-
-  // // ground water check (shut down entire area and also water intake)
-  // controller.map(in = {"sourceGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,0,2});
-  // controller.map(in = {"chamberGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,0,0});
-  // controller.map(in = {"detectorGroundH2O", 1}, out = {0,0,0,2,2,2,2,0,2,2,2,0});
-
-
-  if (!controller.firstLoopFinished && !controller.sensorError) {
-    // if no inputs are showing errors and only if loop()
-    // is run the first time: set output to normalOperationConfig
-    controller.setOutput(normalOperationConfig);
-    controller.firstLoopFinished = true;
-  }
 
 }
