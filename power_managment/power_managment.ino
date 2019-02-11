@@ -3,8 +3,8 @@
 #include <Ethernet.h>
 
 
-const int MAX_INPUT_SIZE = 9; // number of input elements
-const int MAX_OUTPUT_SIZE = 12; // number of outputs elements
+const int MAX_INPUT_SIZE = 1; // number of input elements
+const int MAX_OUTPUT_SIZE = 2; // number of outputs elements
 
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; // MAC address for controllino.
 IPAddress ip(192, 168, 2, 5); // the static IP address of controllino
@@ -98,7 +98,6 @@ class Inputs {
 
     void begin(Pin pinLayout[]) {
       // constructor method with different name to call at a later time
-
       for (int i = 0; i < MAX_INPUT_SIZE; i++) {
         pinMode(pinLayout[i].pinNumber, INPUT);
         inputData[i] = pinLayout[i];
@@ -141,10 +140,17 @@ class Inputs {
     int * getChanges() {
       // Check if any input state has changed to something different than the
       // expected input. If so return the index of that input pin
-      // Returns: int, index of changed input pin or -1 if no input hat changed.
+      // if input changed: wait x ms and recheck the reading. If it changed again, Dont do anything
+      // this allows for flipping of the switches from manual to auto without triggering something
+
+      // Returns: int, index of changed input pin or -1 if no input has changed.
       for (int i=0; i<MAX_INPUT_SIZE; i++) {
         int tempInput = digitalRead(inputData[i].pinNumber);
         if (inputData[i].pinState != tempInput) {
+          delay(200);
+          if (inputData[i].pinState == digitalRead(inputData[i].pinNumber)){
+            continue;
+          }
           inputRepr[i] = inputData[i].pinState = tempInput;
           if (tempInput!=normalInput[i]) {
             return i;
@@ -155,6 +161,9 @@ class Inputs {
     }
 
     bool compare(int (&toBeChecked)[MAX_INPUT_SIZE]) {
+      //NOTE: the rechecking of changed readings is not implemented here because of all the overloading
+      //      and because we dont use these function anyhow at the moment.
+      //
       // Compares a given inputState with the current state of all inputpins.
       // Parameters: toBeChecked: reference to int array[MAX_INPUT_SIZE], can only have elments 0, 1 or 2.
       //                          0: check if pin on same position has state 0
@@ -428,6 +437,7 @@ class Machine {
 
     template <size_t N>
     void setOutput(Dict (&out)[N]) {
+      // unused at the moment
       // stupid passalong of some bullshit. the overloading in outputs
       // is now completly useless because it cant be reached anymore
       // and set output should not be used from outside Machine if we were
@@ -493,6 +503,9 @@ class Machine {
     }
 
     bool map(ArInit<MAX_INPUT_SIZE> in, ArInit<MAX_OUTPUT_SIZE> out) {
+      // NOTE: the rechecking of changed readings is not implemented here because of all the overloading
+      //       and because we dont use these functions anyhow at the moment. 
+      //
       // map for "easy" usage, meaning initialsation of in and out array inside map call
       return mapImpl(in.ar, out.ar);
     }
@@ -535,47 +548,73 @@ void setup() {
 
 
   // Setup the whole machine. All pin configurations go here!
-  // The pinstate describes the normal (i.e. expected) input and output state
+  // The in/out-putPinLayout describes the normal (i.e. expected) input and output state
   // Remember to set MAX_INPUT_SIZE and MAX_OUTPUT_SIZE at the beginning of this
   // script correctly, i.e. length of input and output layout respectively.
+  // Pin inputPinLayout[] = {
+  //   {"sourceFlow_1", CONTROLLINO_A0, 0},
+  //   {"sourceFlow_2", CONTROLLINO_A1, 0},
+  //   {"chamberFlow_1", CONTROLLINO_A2, 0},
+  //   {"chamberFlow_2", CONTROLLINO_A3, 0},
+  //   {"detectorFlow_1", CONTROLLINO_A4, 0},
+  //   {"detectorFlow_2", CONTROLLINO_A5, 0},
+  //   {"sourceGroundH2O", CONTROLLINO_A6, 0},
+  //   {"chamberGroundH2O", CONTROLLINO_A7, 0},
+  //   {"detectorGroundH2O", CONTROLLINO_A8, 0},
+  // };
+
+  // Pin outputPinLayout[] = {
+  //   {"heliumSource", CONTROLLINO_D0, 1},
+  //   {"sourcePump_1", CONTROLLINO_D1, 1},
+  //   {"sourcePump_2", CONTROLLINO_D2, 1},
+  //   {"chamberPump_1", CONTROLLINO_D3, 1},
+  //   {"chamberPump_2", CONTROLLINO_D4, 1},
+  //   {"detectorPump_1", CONTROLLINO_D5, 1},
+  //   {"detectorPump_2", CONTROLLINO_D6, 1},
+  //   {"sourceH2O", CONTROLLINO_D7, 1},
+  //   {"chamberH2O", CONTROLLINO_D8, 1},
+  //   {"detectorH2O", CONTROLLINO_D9, 1},
+  //   {"vacuumChamberValve", CONTROLLINO_D10, 1},
+  //   {"vacuumDetectorValve", CONTROLLINO_D11, 1},
+  //   {"relay0", CONTROLLINO_R0, 1}
+  // };
+
   Pin inputPinLayout[] = {
-    {"sourceFlow_1", CONTROLLINO_A0, 0},
-    {"sourceFlow_2", CONTROLLINO_A1, 0},
-    {"chamberFlow_1", CONTROLLINO_A2, 0},
-    {"chamberFlow_2", CONTROLLINO_A3, 0},
-    {"detectorFlow_1", CONTROLLINO_A4, 0},
-    {"detectorFlow_2", CONTROLLINO_A5, 0},
-    {"sourceGroundH2O", CONTROLLINO_A6, 0},
-    {"chamberGroundH2O", CONTROLLINO_A7, 0},
-    {"detectorGroundH2O", CONTROLLINO_A8, 0},
+    { "fooooooo", CONTROLLINO_A3, 0}
   };
 
   Pin outputPinLayout[] = {
-    {"heliumSource", CONTROLLINO_D0, 1},
-    {"sourcePump_1", CONTROLLINO_D1, 1},
-    {"sourcePump_2", CONTROLLINO_D2, 1},
-    {"chamberPump_1", CONTROLLINO_D3, 1},
-    {"chamberPump_2", CONTROLLINO_D4, 1},
-    {"detectorPump_1", CONTROLLINO_D5, 1},
-    {"detectorPump_2", CONTROLLINO_D6, 1},
-    {"sourceH2O", CONTROLLINO_D7, 1},
-    {"chamberH2O", CONTROLLINO_D8, 1},
-    {"detectorH2O", CONTROLLINO_D9, 1},
-    {"vacuumChamberValve", CONTROLLINO_D10, 1},
-    {"vacuumDetectorValve", CONTROLLINO_D11, 1}
+    { "baaaaaar", CONTROLLINO_D2, 1},
+    { "baaaaaaz", CONTROLLINO_D3, 1},
   };
 
   int mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
-    {0,0,0,2,2,2,2,2,2,2,0,2},
-    {0,0,0,2,2,2,2,2,2,2,0,2},
-    {0,2,2,0,0,2,2,2,2,2,0,0},
-    {0,2,2,0,0,2,2,2,2,2,0,0},
-    {0,2,2,2,2,0,0,2,2,2,2,0},
-    {0,2,2,2,2,0,0,2,2,2,2,0},
-    {0,0,0,2,2,2,2,0,2,2,0,2},
-    {0,0,0,2,2,2,2,0,2,2,0,0},
-    {0,0,0,2,2,2,2,0,2,2,2,0}
+    {0 , 0}
   };
+
+  // int mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
+  // //Input\Output :D00,D01,D02,D03,D04,D05,D06,D07,D08,D09,D10,D11,R00
+  //                 {0 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A0
+
+  //                 {0 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A1
+                 
+  //                 {0 , 2 , 2 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0}, // CONTROLLINO_A2
+                 
+  //                 {0 , 2 , 2 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 2}, // CONTROLLINO_A3
+                 
+  //                 {0 , 2 , 2 , 2 , 2 , 0 , 0 , 2 , 2 , 2 , 2 , 0 , 2}, // CONTROLLINO_A4
+                 
+  //                 {0 , 2 , 2 , 2 , 2 , 0 , 0 , 2 , 2 , 2 , 2 , 0 , 2}, // CONTROLLINO_A5
+                 
+  //                 {0 , 0 , 0 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A6
+                 
+  //                 {0 , 0 , 0 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 0 , 2}, // CONTROLLINO_A7
+                 
+  //                 {0 , 0 , 0 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 2 , 0 , 2}  // CONTROLLINO_A8
+  // };
+
+
+
 
   // start Serial and check if its connected correctly
   Serial.begin(9600);
