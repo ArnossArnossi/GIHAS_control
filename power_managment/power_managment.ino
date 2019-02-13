@@ -13,7 +13,7 @@ IPAddress server(192,168,2,10);  // numeric IP of the server i.e. rpi
 EthernetClient client; // start ethernet client
 
 
-JsonObject & buildJson (String type){
+JsonObject & jsonBuild (String type){
   // build JsonObject with type denoting type of json message
   // the returned object should never live in the global scope
   // or else it wont be destroyed by garbage collection => memory leak 
@@ -29,7 +29,7 @@ JsonObject & buildJson (String type){
   return root;
 }
 
-void sendJson(JsonObject & root){
+void jsonSend(JsonObject & root){
   if (!Serial) {
     return;
   }
@@ -119,9 +119,9 @@ class Inputs {
         if (inputData[i].pinName == pinName) {
           return i;
       String errorMessage = "No Input with name: " + pinName + " found.";
-      JsonObject & root = buildJson("error");
+      JsonObject & root = jsonBuild("error");
       root["error"] = errorMessage;
-      sendJson(root);
+      jsonSend(root);
       // no error catching is attempted
       // if the name is not found the program should fail horribly and obviously
       // NOTE: all mapings need to be tested beforehand in simulation
@@ -269,9 +269,9 @@ class Outputs {
         if (outputData[i].pinName == pinName) {
           return i;
       String errorMessage = "No Output with name: " + pinName + " found.";
-      JsonObject & root = buildJson("error");
+      JsonObject & root = jsonBuild("error");
       root["error"] = errorMessage;
-      sendJson(root);
+      jsonSend(root);
       // no error catching is attempted
       // if the name is not found the program should fail horribly and obviously
       // NOTE: all mapings need to be tested beforehand in simulation
@@ -287,16 +287,16 @@ class Outputs {
           digitalWrite(outputData[i].pinNumber, stateValue);
           outputData[i].pinState = stateValue;
           outputRepr[i] = stateValue;
-          JsonObject & root = buildJson("setOut");
+          JsonObject & root = jsonBuild("setOut");
           root[outputData[i].pinName] = stateValue;
-          sendJson(root);
+          jsonSend(root);
           return;
         }
       }
       String errorMessage = "No Output with name: " + outputName + " found. Nothing is set.";
-      JsonObject & root = buildJson("error");
+      JsonObject & root = jsonBuild("error");
       root["error"] = errorMessage;
-      sendJson(root);
+      jsonSend(root);
     }
 
     template <size_t N>
@@ -325,10 +325,10 @@ class Outputs {
           outputRepr[i] = configArray[i];
         }
       }
-      JsonObject & root = buildJson("setAllOutputs");
+      JsonObject & root = jsonBuild("setAllOutputs");
       jsonAddArray(root, "changedOut", configArray);
       jsonAddArray(root, "totalOut", outputRepr);
-      sendJson(root);
+      jsonSend(root);
     }
 
     void setNormalOutput() {
@@ -405,6 +405,14 @@ class Machine {
 
     // flag to indicate wether a sensor is showing an error
     bool sensorError = false;
+    // flag for connection status of ethernet (0 not connected, 1 connected, -1 timed out,
+    // -2 invalid server, -3truncated, -4 invalid response)
+    int ethernetConnected = 0;
+    // timing start for rechecking of ethernet connection in milliseconds
+    unsigned long timerReconnect = 0;
+    // time between recheckings of ethernet connection in milliseconds
+    int waitReconnect = 10000;
+
 
     Machine() {}
 
@@ -429,9 +437,9 @@ class Machine {
         output.setNormalOutput();
       } else {
         sensorError = true;
-        JsonObject & root = buildJson("startupError");
+        JsonObject & root = jsonBuild("startupError");
         root["changedIn"] = index;
-        sendJson(root);
+        jsonSend(root);
       }
     }
 
@@ -457,12 +465,12 @@ class Machine {
           output.setOutput(mmapping[changedIndex]);
         }
 
-        JsonObject & root = buildJson("sensorEvent");
+        JsonObject & root = jsonBuild("sensorEvent");
         jsonAddArray(root, "totalIn", input.inputRepr);
         root["changedIn"] = changedIndex;
         jsonAddArray(root, "changedOut", mmapping[changedIndex]);
         jsonAddArray(root,"totalOut", output.outputRepr);
-        sendJson(root);
+        jsonSend(root);
       }      
     }
 
@@ -493,10 +501,10 @@ class Machine {
       if (input.compare(inputArray)) {
         output.setOutput(outputArray);
         sensorError = true;
-        JsonObject & root = buildJson("sensorEvent");
+        JsonObject & root = jsonBuild("sensorEvent");
         jsonAddArray(root, "input", inputArray);
         jsonAddArray(root, "output", outputArray);
-        sendJson(root);
+        jsonSend(root);
         return true;
       }
       return false;
@@ -536,6 +544,19 @@ class Machine {
       for (int i=0; i<MAX_OUTPUT_SIZE; i++) outArray[i] = 2;
       outArray[output.getPinID(out.key)] = out.value;
       return mapImpl(inArray.ar, outArray.ar);
+    }
+
+    void checkConnection() {
+      // Check if ethernet is connected.
+      // If not and timer for retry has run down: try to reconnect
+      if (!ethernetConnected && millis() >= timerReconnect) {
+        Serial.println("Trying to reconnect...");
+        ethernetConnected = client.connect(server, 4000);
+        timerReconnect = millis() + waitReconnect;
+        Serial.print("Connectionstatus: ");
+        Serial.println(ethernetConnected);
+      }
+
     }
 
 };
@@ -633,10 +654,13 @@ void setup() {
   delay(1000);
 
   // enable connection with server (rpi) over port 4000
-  if (client.connect(server, 4000)) {
+  Serial.println("Start connecting with ethernet...");
+  controller.ethernetConnected = client.connect(server, 4000);
+  if (controller.ethernetConnected) {
     Serial.println("Connected.");
   } else {
     Serial.println("Connection failed.");
+    controller.timerReconnect = millis();
   }
 
   // initilize controller with input and output pins
@@ -656,4 +680,5 @@ void loop() {
 
   controller.runAllMappings();
 
+  controller.checkConnection();
 }
