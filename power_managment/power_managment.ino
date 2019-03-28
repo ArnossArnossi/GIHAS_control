@@ -3,8 +3,8 @@
 #include <Ethernet.h>
 
 
-const int MAX_INPUT_SIZE = 1; // number of input elements
-const int MAX_OUTPUT_SIZE = 2; // number of outputs elements
+const int MAX_INPUT_SIZE = 16; // number of input elements
+const int MAX_OUTPUT_SIZE = 31; // number of outputs elements
 
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; // MAC address for controllino.
 IPAddress ip(192, 168, 2, 5); // the static IP address of controllino
@@ -411,7 +411,7 @@ class Machine {
     // timing start for rechecking of ethernet connection in milliseconds
     unsigned long timerReconnect = 0;
     // time between recheckings of ethernet connection in milliseconds
-    int waitReconnect = 10000;
+    int waitReconnect = 20000;
 
 
     Machine() {}
@@ -572,67 +572,96 @@ void setup() {
   // The in/out-putPinLayout describes the normal (i.e. expected) input and output state
   // Remember to set MAX_INPUT_SIZE and MAX_OUTPUT_SIZE at the beginning of this
   // script correctly, i.e. length of input and output layout respectively.
-  // Pin inputPinLayout[] = {
-  //   {"sourceFlow_1", CONTROLLINO_A0, 0},
-  //   {"sourceFlow_2", CONTROLLINO_A1, 0},
-  //   {"chamberFlow_1", CONTROLLINO_A2, 0},
-  //   {"chamberFlow_2", CONTROLLINO_A3, 0},
-  //   {"detectorFlow_1", CONTROLLINO_A4, 0},
-  //   {"detectorFlow_2", CONTROLLINO_A5, 0},
-  //   {"sourceGroundH2O", CONTROLLINO_A6, 0},
-  //   {"chamberGroundH2O", CONTROLLINO_A7, 0},
-  //   {"detectorGroundH2O", CONTROLLINO_A8, 0},
-  // };
-
-  // Pin outputPinLayout[] = {
-  //   {"heliumSource", CONTROLLINO_D0, 1},
-  //   {"sourcePump_1", CONTROLLINO_D1, 1},
-  //   {"sourcePump_2", CONTROLLINO_D2, 1},
-  //   {"chamberPump_1", CONTROLLINO_D3, 1},
-  //   {"chamberPump_2", CONTROLLINO_D4, 1},
-  //   {"detectorPump_1", CONTROLLINO_D5, 1},
-  //   {"detectorPump_2", CONTROLLINO_D6, 1},
-  //   {"sourceH2O", CONTROLLINO_D7, 1},
-  //   {"chamberH2O", CONTROLLINO_D8, 1},
-  //   {"detectorH2O", CONTROLLINO_D9, 1},
-  //   {"vacuumChamberValve", CONTROLLINO_D10, 1},
-  //   {"vacuumDetectorValve", CONTROLLINO_D11, 1},
-  //   {"relay0", CONTROLLINO_R0, 1}
-  // };
-
   Pin inputPinLayout[] = {
-    { "fooooooo", CONTROLLINO_A3, 0}
+    {"foo", CONTROLLINO_A0, 0},
+    {"bar", CONTROLLINO_A1, 0},
+    {"baz", CONTROLLINO_A2, 0},
+    {"some", CONTROLLINO_A3, 0},
+    {"thing", CONTROLLINO_A4, 0},
+    {"fooo", CONTROLLINO_A5, 0},
+    {"baaar", CONTROLLINO_A6, 0},
+    {"baaaz", CONTROLLINO_A7, 0},
+    {"soome", CONTROLLINO_A8, 0},
+    {"thiing", CONTROLLINO_A9, 0},
+    {"test", CONTROLLINO_A10, 0},
+    {"teest", CONTROLLINO_A11, 0},
+    {"teeeest", CONTROLLINO_A12, 0},
+    {"randy", CONTROLLINO_A13, 0},
+    {"joe", CONTROLLINO_A14, 0},
+    {"alice", CONTROLLINO_A15, 0},
   };
 
   Pin outputPinLayout[] = {
-    { "baaaaaar", CONTROLLINO_D2, 1},
-    { "baaaaaaz", CONTROLLINO_D3, 1},
+    {"HS20_source1", CONTROLLINO_D0, 1},
+    {"roots1_source1", CONTROLLINO_D1, 1},
+    {"roots2_source1", CONTROLLINO_D2, 1},
+    {"valve_source1", CONTROLLINO_D3, 1},
+    {"backingpump_source1", CONTROLLINO_D4, 1},
+    {"V0184_chop1", CONTROLLINO_D5, 1},
+    {"valve_chop1", CONTROLLINO_D6, 1},
+    {"backingpump_chop1", CONTROLLINO_D7, 1},
+    {"HS20_source2", CONTROLLINO_D8, 1},
+    {"roots1_source2", CONTROLLINO_D9, 1},
+    {"roots2_source2", CONTROLLINO_D10, 1},
+    {"valve_source2", CONTROLLINO_D11, 1},
+    {"backingpump_source2", CONTROLLINO_D12, 1},
+    {"V0183_chop2", CONTROLLINO_D13, 1},
+    {"valve_chop2", CONTROLLINO_D14, 1},
+    {"backingpump_chop2", CONTROLLINO_D15, 1},
+    {"turbopump1_scatt", CONTROLLINO_D16, 1},
+    {"turbopump2_scatt", CONTROLLINO_D17, 1},
+    {"Ed100_scatt", CONTROLLINO_D18, 1},
+    {"Ed63_scatt", CONTROLLINO_D19, 1},
+    {"valve_scatt", CONTROLLINO_R0, 1},
+    {"backinpump_scatt", CONTROLLINO_R1, 1},
+    {"turbopump_pitot", CONTROLLINO_R2, 1},
+    {"2xEd1001_tof", CONTROLLINO_R3, 1},
+    {"valve_tof", CONTROLLINO_R4, 1},
+    {"backingpump_tof", CONTROLLINO_R5, 1},
+    {"2xEd1002_tof", CONTROLLINO_R6, 1},
+    {"turbopump_det", CONTROLLINO_R7, 1},
+    {"Ed63_det", CONTROLLINO_R8, 1},
+    {"valve_det", CONTROLLINO_R9, 1},
+    {"backingpump_det", CONTROLLINO_R10, 1}
   };
+
 
   int mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
-    {0 , 0}
+  //Input\Output :D00,D01,D02,D03,D04,D05,D06,D07,D08,D09,D10,D11,D12,D13,D14,D15,D16,D17,D18,D19,R00,R01,R02,R03,R04,R05,R06,R07,R08,R09,R10
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A0
+
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A1
+                 
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A2
+                 
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A3
+                 
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0}, // CONTROLLINO_A4
+                 
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A5
+                 
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 0 , 0 , 0}, // CONTROLLINO_A6
+                 
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A7
+                 
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A8
+
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A9
+
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A10
+
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A11
+
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A12
+
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A13
+
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A14
+
+                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A15
+
+
   };
-
-  // int mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
-  // //Input\Output :D00,D01,D02,D03,D04,D05,D06,D07,D08,D09,D10,D11,R00
-  //                 {0 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A0
-
-  //                 {0 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A1
-                 
-  //                 {0 , 2 , 2 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0}, // CONTROLLINO_A2
-                 
-  //                 {0 , 2 , 2 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 2}, // CONTROLLINO_A3
-                 
-  //                 {0 , 2 , 2 , 2 , 2 , 0 , 0 , 2 , 2 , 2 , 2 , 0 , 2}, // CONTROLLINO_A4
-                 
-  //                 {0 , 2 , 2 , 2 , 2 , 0 , 0 , 2 , 2 , 2 , 2 , 0 , 2}, // CONTROLLINO_A5
-                 
-  //                 {0 , 0 , 0 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A6
-                 
-  //                 {0 , 0 , 0 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 0 , 2}, // CONTROLLINO_A7
-                 
-  //                 {0 , 0 , 0 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 2 , 0 , 2}  // CONTROLLINO_A8
-  // };
 
 
 
