@@ -137,7 +137,7 @@ class Inputs {
       }
     }
 
-    int * getChanges() {
+    int getChanges() {
       // Check if any input state has changed to something different than the
       // expected input. If so return the index of that input pin
       // if input changed: wait x ms and recheck the reading. If it changed again, Dont do anything
@@ -155,6 +155,18 @@ class Inputs {
           if (tempInput!=normalInput[i]) {
             return i;
           }
+        }
+      }
+      return -1;
+    }
+
+    int checknormalInput(){
+      // Check if input is the same as normalInput defined in setup()
+      // if any input is not as expected send index of that input otherwise send-1
+
+      for (int i=0; i<MAX_INPUT_SIZE; i++) {
+        if (digitalRead(inputData[i].pinNumber) != normalInput[i]){
+          return i;
         }
       }
       return -1;
@@ -432,7 +444,7 @@ class Machine {
       // Check if input is different from normalInput, i.e. the expected input states.
       // This only works if the inputData is set to the normalInput in the beginning
       // and not the acctual state of the inputs pins.
-      int index = input.getChanges();
+      int index = input.checknormalInput();
       if (index == -1) {
         output.setNormalOutput();
       } else {
@@ -564,8 +576,17 @@ class Machine {
 
 Machine controller;
 
+void resetWrapper(){
+  // for some reason non static member function cannot be used as interrupt routines
+  controller.checkAndEnableNormalOutput();
+}
 
 void setup() {
+
+  //interrupt routine for restarting all outputs after sensorevent has been fixed
+  const int interruptPin = CONTROLLINO_IN0;
+  pinMode(interruptPin, INPUT);
+  attachInterrupt(digitalPinToInterrupt(interruptPin), resetWrapper, RISING);
 
 
   // Setup the whole machine. All pin configurations go here!
@@ -573,22 +594,22 @@ void setup() {
   // Remember to set MAX_INPUT_SIZE and MAX_OUTPUT_SIZE at the beginning of this
   // script correctly, i.e. length of input and output layout respectively.
   Pin inputPinLayout[] = {
-    {"foo", CONTROLLINO_A0, 0},
-    {"bar", CONTROLLINO_A1, 0},
-    {"baz", CONTROLLINO_A2, 0},
-    {"some", CONTROLLINO_A3, 0},
-    {"thing", CONTROLLINO_A4, 0},
-    {"fooo", CONTROLLINO_A5, 0},
-    {"baaar", CONTROLLINO_A6, 0},
-    {"baaaz", CONTROLLINO_A7, 0},
-    {"soome", CONTROLLINO_A8, 0},
-    {"thiing", CONTROLLINO_A9, 0},
-    {"test", CONTROLLINO_A10, 0},
-    {"teest", CONTROLLINO_A11, 0},
-    {"teeeest", CONTROLLINO_A12, 0},
-    {"randy", CONTROLLINO_A13, 0},
-    {"joe", CONTROLLINO_A14, 0},
-    {"alice", CONTROLLINO_A15, 0},
+    {"B1", CONTROLLINO_A0, 0},
+    {"B2", CONTROLLINO_A1, 0},
+    {"B3", CONTROLLINO_A2, 0},
+    {"B4", CONTROLLINO_A3, 0},
+    {"B5", CONTROLLINO_A4, 0},
+    {"B6", CONTROLLINO_A5, 0},
+    {"B7", CONTROLLINO_A6, 0},
+    {"B8", CONTROLLINO_A7, 0},
+    {"B9", CONTROLLINO_A8, 0},
+    {"B10", CONTROLLINO_A9, 0},
+    {"B11", CONTROLLINO_A10, 0},
+    {"B12", CONTROLLINO_A11, 0},
+    {"B13", CONTROLLINO_A12, 0},
+    {"B14", CONTROLLINO_A13, 0},
+    {"B15", CONTROLLINO_A14, 0},
+    {"B16", CONTROLLINO_A15, 0},
   };
 
   Pin outputPinLayout[] = {
