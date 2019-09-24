@@ -4,8 +4,10 @@
 #include <Ethernet.h>
 
 
-const int MAX_INPUT_SIZE = 20; //18; // number of input elements
+const int MAX_INPUT_SIZE = 32; //18; // number of input elements
 const int MAX_OUTPUT_SIZE = 35; //33; // number of outputs elements
+
+
 
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; // MAC address for controllino.
 IPAddress ip(192, 168, 2, 5); // the static IP address of controllino
@@ -33,6 +35,7 @@ int slavePinLookup[69] = {-1, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, -1
 
 
 
+const size_t capacity = JSON_ARRAY_SIZE(72) + JSON_ARRAY_SIZE(32) + JSON_OBJECT_SIZE(5) + 50;
 JsonObject & jsonBuild (String type){
   // build JsonObject with type denoting type of json message
   // the returned object should never live in the global scope
@@ -41,7 +44,7 @@ JsonObject & jsonBuild (String type){
   // initilize Json object with certain site. Size has to be
   // changed according to the size of the json document
   // 1200 is enough for 32 key value <str, int> pairs for the output and a bit more
-  StaticJsonBuffer<1200> jsonBuffer;
+  StaticJsonBuffer<capacity> jsonBuffer;
   // root is now the object which holds the json data an where data can
   // be appended and sent to Serial
   JsonObject& root = jsonBuffer.createObject();
@@ -73,33 +76,33 @@ template <size_t N> void jsonAddArray(JsonObject & someRoot, String name, byte (
 
 
 struct Pin {
+
   String pinName;
   byte pinNumber;
   byte pinState;
 };
 
+// struct Dict {
+//   String key;
+//   byte value;
 
-struct Dict {
-  String key;
-  byte value;
-
-  Dict(String key = "", byte value = 0) : key(key), value(value) {}
-};
+//   Dict(String key = "", byte value = 0) : key(key), value(value) {}
+// };
 
 
-template <size_t N>
-struct ArInit {
-  // helper struct for "easy" input of parameters to map method
-  // easy here means needlesly complicated and fucking stupid
-    byte ar[N];
+// template <size_t N>
+// struct ArInit {
+//   // helper struct for "easy" input of parameters to map method
+//   // easy here means needlesly complicated and fucking stupid
+//     byte ar[N];
   
-  // custom constructor cannot be used because implicit list initialization
-  // would be overwritten and cannot be reimplemented because std cant be used
+//   // custom constructor cannot be used because implicit list initialization
+//   // would be overwritten and cannot be reimplemented because std cant be used
 
-    byte& operator[](byte i) {
-      return ar[i];
-    }
-};
+//     byte& operator[](byte i) {
+//       return ar[i];
+//     }
+// };
 
 
 class Inputs {
@@ -122,7 +125,7 @@ class Inputs {
     void begin(Pin pinLayout[]) {
       // constructor method with different name to call at a later time
       for (int i = 0; i < MAX_INPUT_SIZE; i++) {
-        if (pinLayout[i].pinName.substring(0, 2) == "M:") {
+        if (pinLayout[i].pinName[0] == 'M') {
           pinMode(pinLayout[i].pinNumber, INPUT);
         }
         inputData[i] = pinLayout[i];
@@ -135,25 +138,6 @@ class Inputs {
       }
     }
 
-    int getPinID(String pinName) {
-      // Return the position (i.e. id) of pin with name pinName
-      // in inputData
-      // Parameters: String pinName: name of pin to be found
-      // Return: int, # element in inputData
-      for (int i=0; i<MAX_INPUT_SIZE; i++) {
-        if (inputData[i].pinName == pinName) {
-          return i;
-      String errorMessage = "No Input with name: " + pinName + " found.";
-      JsonObject & root = jsonBuild("error");
-      root["error"] = errorMessage;
-      jsonSend(root);
-      // no error catching is attempted
-      // if the name is not found the program should fail horribly and obviously
-      // NOTE: all mapings need to be tested beforehand in simulation
-        }
-      }
-    }
-
     int readInput(int inputNumber) {
       // Read state of input at postion inputNumber in inputLayout, check if request has to be send via rs485 first
       // get Name: if slave: 
@@ -162,17 +146,17 @@ class Inputs {
       //              - build request 
       //              - send request if no response: log no response event -> should be send out via sms
       Pin mpin = inputData[inputNumber];
-      if (mpin.pinName.substring(0, 2) == "M:") {
+      if (mpin.pinName[0] == 'M') {
         return digitalRead(inputData[inputNumber].pinNumber);
       }
-      else if (mpin.pinName.substring(0, 2) == "S:") {
+      else if (mpin.pinName[0] == 'S') {
         int registerIndex = slavePinLookup[mpin.pinNumber - 1];
 
         if (registerIndex == -1) {
           String errorMessage = "Slave has no pin with pin number: " + String(inputData[inputNumber].pinNumber)
                                  + "Ignoring this query.";
-          JsonObject & root = jsonBuild("error");
-          root["error"] = errorMessage;
+          JsonObject & root = jsonBuild(F("error"));
+          root[F("error")] = errorMessage;
           jsonSend(root);
         }
       
@@ -182,16 +166,12 @@ class Inputs {
 
         ControllinoModbusMaster.query(query);
 
-        // TODO: check if this implementation of a time is acctualy save when millis() rolls over
-        // I think we would still be stuck if the rollover happens inside the while loop
-        long startTime = millis();
+        unsigned long startTime = millis();
         while (ControllinoModbusMaster.getState() != COM_IDLE && millis() - startTime < slaveInputTimeout) {
           ControllinoModbusMaster.poll();
         }
         return ModbusSlaveRegisters[registerIndex];
       }
-
-
     }
 
     void update() {
@@ -200,7 +180,6 @@ class Inputs {
       for (int i = 0; i < MAX_INPUT_SIZE; i++) {
         inputRepr[i] = inputData[i].pinState = readInput(i);
       }
-
     }
 
     int getChanges() {
@@ -219,6 +198,7 @@ class Inputs {
             continue;
           }
           inputRepr[i] = inputData[i].pinState = tempInput;
+          Serial.println("sensorEvent is detected in getChanges()");
           if (tempInput!=normalInput[i]) {
             return i;
           }
@@ -239,76 +219,95 @@ class Inputs {
       return -1;
     }
 
-    bool compare(byte (&toBeChecked)[MAX_INPUT_SIZE]) {
-      //NOTE: the rechecking of changed readings is not implemented here because of all the overloading
-      //      and because we dont use these function anyhow at the moment.
-      //
-      // Compares a given inputState with the current state of all inputpins.
-      // Parameters: toBeChecked: reference to int array[MAX_INPUT_SIZE], can only have elments 0, 1 or 2.
-      //                          0: check if pin on same position has state 0
-      //                          1: check if pin on same position has state 1
-      //                          2: do not check pin at all
-      // Returns: true, if all 0s and 1s have corresponding state in correct position
-      //          false, in all other cases. Also if only 2s are given in toBeChecked
+    // int getPinID(String pinName) {
+    //   // Return the position (i.e. id) of pin with name pinName
+    //   // in inputData
+    //   // Parameters: String pinName: name of pin to be found
+    //   // Return: int, # element in inputData
+    //   for (int i=0; i<MAX_INPUT_SIZE; i++) {
+    //     if (inputData[i].pinName == pinName) {
+    //       return i;
+    //   String errorMessage = "No Input with name: " + pinName + " found.";
+    //   JsonObject & root = jsonBuild("error");
+    //   root["error"] = errorMessage;
+    //   jsonSend(root);
+    //   // no error catching is attempted
+    //   // if the name is not found the program should fail horribly and obviously
+    //   // NOTE: all mapings need to be tested beforehand in simulation
+    //     }
+    //   }
+    // }
+
+    // bool compare(byte (&toBeChecked)[MAX_INPUT_SIZE]) {
+    //   //NOTE: the rechecking of changed readings is not implemented here because of all the overloading
+    //   //      and because we dont use these function anyhow at the moment.
+    //   //
+    //   // Compares a given inputState with the current state of all inputpins.
+    //   // Parameters: toBeChecked: reference to int array[MAX_INPUT_SIZE], can only have elments 0, 1 or 2.
+    //   //                          0: check if pin on same position has state 0
+    //   //                          1: check if pin on same position has state 1
+    //   //                          2: do not check pin at all
+    //   // Returns: true, if all 0s and 1s have corresponding state in correct position
+    //   //          false, in all other cases. Also if only 2s are given in toBeChecked
       
-      bool sensorEvent = false;
-      update(); //update all inputs
+    //   bool sensorEvent = false;
+    //   update(); //update all inputs
 
-      for (int i=0; i<MAX_INPUT_SIZE; i++) {
-        if (toBeChecked[i] == 2) {
-          // TODO check if this clause is actually stept into
-          continue;
-        }
-        if (toBeChecked[i] != inputData[i].pinState) {
-          return false;
-        } else {
-          sensorEvent = true;
-        }
-      }
-      return sensorEvent;
-    }
+    //   for (int i=0; i<MAX_INPUT_SIZE; i++) {
+    //     if (toBeChecked[i] == 2) {
+    //       // TODO check if this clause is actually stept into
+    //       continue;
+    //     }
+    //     if (toBeChecked[i] != inputData[i].pinState) {
+    //       return false;
+    //     } else {
+    //       sensorEvent = true;
+    //     }
+    //   }
+    //   return sensorEvent;
+    // }
 
-    bool compare(Dict toBeChecked) {
-      // Overloaded function
-      // Parameters: toBeChecked: Dict structure with key: name of pin
-      //                                              value: expected state
-      // Returns: true: if pin name with same state is found in inputData
-      //          false: all other cases
-      update();
+    // bool compare(Dict toBeChecked) {
+    //   // Overloaded function
+    //   // Parameters: toBeChecked: Dict structure with key: name of pin
+    //   //                                              value: expected state
+    //   // Returns: true: if pin name with same state is found in inputData
+    //   //          false: all other cases
+    //   update();
 
-      for (auto & j : inputData) {
-        if (toBeChecked.key == j.pinName && toBeChecked.value == j.pinState) {
-          return true;
-        }
-      }
-      return false;
-    }
+    //   for (auto & j : inputData) {
+    //     if (toBeChecked.key == j.pinName && toBeChecked.value == j.pinState) {
+    //       return true;
+    //     }
+    //   }
+    //   return false;
+    // }
 
-    template <size_t N>
-    bool compare(Dict (&toBeChecked)[N]) {
-      // Overloaded function
-      // Parameters: toBeChecked: Dict array with key: name of pin
-      //                                               value: expected state
-      // Returns: true: if all pin names with same state are found in inputData
-      //          false: all other cases, also if no names are found in inputData 
+    // template <size_t N>
+    // bool compare(Dict (&toBeChecked)[N]) {
+    //   // Overloaded function
+    //   // Parameters: toBeChecked: Dict array with key: name of pin
+    //   //                                               value: expected state
+    //   // Returns: true: if all pin names with same state are found in inputData
+    //   //          false: all other cases, also if no names are found in inputData 
 
       
-      bool sensorEvent = false;
-      update();
+    //   bool sensorEvent = false;
+    //   update();
 
-      for (auto & i : toBeChecked) {
-        for (auto & j : inputData) {
+    //   for (auto & i : toBeChecked) {
+    //     for (auto & j : inputData) {
 
-          if (i.key != j.pinName) continue;
-          if (i.value != j.pinState) {
-            return false;
-          } else {
-            sensorEvent = true;
-          }
-        }
-      }
-      return sensorEvent;
-    }
+    //       if (i.key != j.pinName) continue;
+    //       if (i.value != j.pinState) {
+    //         return false;
+    //       } else {
+    //         sensorEvent = true;
+    //       }
+    //     }
+    //   }
+    //   return sensorEvent;
+    // }
 
 };
 
@@ -346,63 +345,15 @@ class Outputs {
       }
     }
 
-    int getPinID(String pinName) {
-      // Return the position (i.e. id) of pin with name pinName
-      // in in/ouputdata
-      // Parameters: String pinName: name of pin to be found
-      // Return: int, # element in input ot ouputData
-      for (int i=0; i<MAX_OUTPUT_SIZE; i++) {
-        if (outputData[i].pinName == pinName) {
-          return i;
-      String errorMessage = "No Output with name: " + pinName + " found.";
-      JsonObject & root = jsonBuild("error");
-      root["error"] = errorMessage;
-      jsonSend(root);
-      // no error catching is attempted
-      // if the name is not found the program should fail horribly and obviously
-      // NOTE: all mapings need to be tested beforehand in simulation
-        }
-      }
-    }
-    
-    void setOutput(String outputName, byte stateValue) {
-      // set state of the Pin with outputName to stateValue
-
-      for (int i=0; i<MAX_OUTPUT_SIZE; i++) {
-        if (outputData[i].pinName == outputName) {
-          writeOutput(i, stateValue);
-          outputData[i].pinState = stateValue;
-          outputRepr[i] = stateValue;
-          JsonObject & root = jsonBuild("setOut");
-          root[outputData[i].pinName] = stateValue;
-          jsonSend(root);
-          return;
-        }
-      }
-      String errorMessage = "No Output with name: " + outputName + " found. Nothing is set.";
-      JsonObject & root = jsonBuild("error");
-      root["error"] = errorMessage;
-      jsonSend(root);
-    }
-
-    template <size_t N>
-    void setOutput(Dict (&config)[N]) {
-      // set multiple outputs at once 
-      // Parameters:  config: reference to Dict array with names and desired states of muliple pins
-
-      for (int i = 0; i<N; i++) {
-        setOutput(config[i].key, config[i].value);
-      }
-    }
 
     void writeOutput(int outputNumber, byte outputState) {
       // Check if output on postion outputnumber in outputPinLayout is in master or slave
       // write data or send query accordingly
       Pin mpin = outputData[outputNumber];
-      if (mpin.pinName.substring(0, 2) == "M:") {
+      if (mpin.pinName[0] == 'M') {
         digitalWrite(mpin.pinNumber, outputState);
       }
-      else if (mpin.pinName.substring(0, 2) == "S:") {
+      else if (mpin.pinName[0] == 'S') {
         int registerIndex = slavePinLookup[mpin.pinNumber - 1];
 
         if (registerIndex == -1) {
@@ -421,9 +372,7 @@ class Outputs {
 
         ControllinoModbusMaster.query(query);
 
-        // TODO: check if this implementation of a time is acctualy save when millis() rolls over
-        // I think we would still be stuck if the rollover happens inside the while loop
-        long startTime = millis();
+        unsigned long startTime = millis();
         while(ControllinoModbusMaster.getState() != COM_IDLE &&  millis() - startTime < slaveOutputTimeout) {
           //Serial.println("Inside while not COM_IDLE");
           ControllinoModbusMaster.poll();
@@ -453,6 +402,7 @@ class Outputs {
       jsonAddArray(root, "changedOut", configArray);
       jsonAddArray(root, "totalOut", outputRepr);
       jsonSend(root);
+      Serial.println("normal output is set and json is tried.");
     }
 
     void setNormalOutput() {
@@ -484,37 +434,87 @@ class Outputs {
       return isSet;
     }
 
-    bool isAllreadySet(Dict toBeChecked) {
-
-      byte tempArray[MAX_OUTPUT_SIZE] = {};
-      for (int i=0; i<MAX_OUTPUT_SIZE; i++) {
-        if (toBeChecked.key == outputData[i].pinName) {
-          tempArray[i] = toBeChecked.value;
-        } else {
-          tempArray[i] = 2;
-        }
-      }
-      return isAllreadySet(tempArray);
-    }
-
-    template <size_t N>
-    bool isAllreadySet(Dict (&toBeChecked)[N]) {
-
-      byte tempArray[MAX_OUTPUT_SIZE] = {};
-      for (int i=0; i<MAX_OUTPUT_SIZE; i++) {
-        for (auto & j : toBeChecked) {
-          if (j.key == outputData[i]) {
-            tempArray[i] = j.val;
-          } else {
-            tempArray[i] = 2;
-          }
-        }
-      }
-      return isAllreadySet(tempArray);
-
-    }
-
 };
+
+    // int getPinID(String pinName) {
+    //   // Return the position (i.e. id) of pin with name pinName
+    //   // in in/ouputdata
+    //   // Parameters: String pinName: name of pin to be found
+    //   // Return: int, # element in input ot ouputData
+    //   for (int i=0; i<MAX_OUTPUT_SIZE; i++) {
+    //     if (outputData[i].pinName == pinName) {
+    //       return i;
+    //   String errorMessage = "No Output with name: " + pinName + " found.";
+    //   JsonObject & root = jsonBuild("error");
+    //   root["error"] = errorMessage;
+    //   jsonSend(root);
+    //   // no error catching is attempted
+    //   // if the name is not found the program should fail horribly and obviously
+    //   // NOTE: all mapings need to be tested beforehand in simulation
+    //     }
+    //   }
+    // }
+    
+    // void setOutput(String outputName, byte stateValue) {
+    //   // set state of the Pin with outputName to stateValue
+    //   // TODO: does not work with char pinName right now
+
+    //   for (int i=0; i<MAX_OUTPUT_SIZE; i++) {
+    //     if (outputData[i].pinName == outputName) {
+    //       writeOutput(i, stateValue);
+    //       outputData[i].pinState = stateValue;
+    //       outputRepr[i] = stateValue;
+    //       JsonObject & root = jsonBuild("setOut");
+    //       root[outputData[i].pinName] = stateValue;
+    //       jsonSend(root);
+    //       return;
+    //     }
+    //   }
+    //   String errorMessage = "No Output with name: " + outputName + " found. Nothing is set.";
+    //   JsonObject & root = jsonBuild("error");
+    //   root["error"] = errorMessage;
+    //   jsonSend(root);
+    // }
+
+    // template <size_t N>
+    // void setOutput(Dict (&config)[N]) {
+    //   // set multiple outputs at once 
+    //   // Parameters:  config: reference to Dict array with names and desired states of muliple pins
+
+    //   for (int i = 0; i<N; i++) {
+    //     setOutput(config[i].key, config[i].value);
+    //   }
+    // }
+
+//     bool isAllreadySet(Dict toBeChecked) {
+
+//       byte tempArray[MAX_OUTPUT_SIZE] = {};
+//       for (int i=0; i<MAX_OUTPUT_SIZE; i++) {
+//         if (toBeChecked.key == outputData[i].pinName) {
+//           tempArray[i] = toBeChecked.value;
+//         } else {
+//           tempArray[i] = 2;
+//         }
+//       }
+//       return isAllreadySet(tempArray);
+//     }
+
+//     template <size_t N>
+//     bool isAllreadySet(Dict (&toBeChecked)[N]) {
+
+//       byte tempArray[MAX_OUTPUT_SIZE] = {};
+//       for (int i=0; i<MAX_OUTPUT_SIZE; i++) {
+//         for (auto & j : toBeChecked) {
+//           if (j.key == outputData[i]) {
+//             tempArray[i] = j.val;
+//           } else {
+//             tempArray[i] = 2;
+//           }
+//         }
+//       }
+//       return isAllreadySet(tempArray);
+
+//     }
 
 class Machine {
 
@@ -560,24 +560,14 @@ class Machine {
         output.setNormalOutput();
       } else {
         sensorError = true;
-        JsonObject & root = jsonBuild("startupError");
-        root["changedIn"] = index;
+        JsonObject & root = jsonBuild(F("startupError"));
+        root[F("changedIn")] = index;
         jsonSend(root);
       }
     }
 
-    template <size_t N>
-    void setOutput(Dict (&out)[N]) {
-      // unused at the moment
-      // stupid passalong of some bullshit. the overloading in outputs
-      // is now completly useless because it cant be reached anymore
-      // and set output should not be used from outside Machine if we were
-      // serious about data encapsulation but who cares!!!
-      output.setOutput(out);
-    }
-
     void runAllMappings() {
-      // Check if input has changed. If so set output to defined output in mmapping.
+      // Check if input has changed. If so set output to defined output in mapping.
       // Carefull: the output is also set if the input changes back to normal
       int changedIndex = input.getChanges();
       if (changedIndex != -1) {
@@ -588,85 +578,12 @@ class Machine {
           output.setOutput(mmapping[changedIndex]);
         }
 
-        JsonObject & root = jsonBuild("sensorEvent");
-        jsonAddArray(root, "totalIn", input.inputRepr);
-        root["changedIn"] = changedIndex;
-        jsonAddArray(root, "changedOut", mmapping[changedIndex]);
-        jsonAddArray(root,"totalOut", output.outputRepr);
+        JsonObject & root = jsonBuild(F("sensorEvent"));
+        jsonAddArray(root, F("totalIn"), input.inputRepr);
+        root[F("changedIn")] = changedIndex;
+        jsonAddArray(root,F("totalOut"), output.outputRepr);
         jsonSend(root);
       }      
-    }
-
-    bool mapImpl(byte (&inputArray)[MAX_INPUT_SIZE], byte (&outputArray)[MAX_OUTPUT_SIZE]) {
-      // Set all outputs to a given state if all inputs are in a given state.
-      // Parameters: inputArray: int array of length MAX_INPUT_SIZE
-      //             elements can be: 0: check if state of pin on same position
-      //                                 in the inputPinLayout is 0
-      //                              1: check if state of pin is 1
-      //                              2: do not check state of pin
-      //             outputArray: int array of length MAX_OUTPUT_SIZE
-      //             elements can be: 0: set state to 0
-      //                              1: set state to 1
-      //                              2: do not set state
-      // Returns: false: if output is not changed
-      //          true: if output is changed
-      //
-      // Usage example:
-      //    Dict in;
-      //    ArInit<MAX_OUTPUT_SIZE> out;
-      //    controller.map(in = {"sourceFlow_2", 1}, out = {0,0,0,2,2,2,2,2,2,2,0,2});
-
-      if (output.isAllreadySet(outputArray)) {
-        // do not repeat test if output is allready set anyway
-        return false;
-      }
-
-      if (input.compare(inputArray)) {
-        output.setOutput(outputArray);
-        sensorError = true;
-        JsonObject & root = jsonBuild("sensorEvent");
-        jsonAddArray(root, "input", inputArray);
-        jsonAddArray(root, "output", outputArray);
-        jsonSend(root);
-        return true;
-      }
-      return false;
-    }
-
-    bool map(ArInit<MAX_INPUT_SIZE> in, ArInit<MAX_OUTPUT_SIZE> out) {
-      // NOTE: the rechecking of changed readings is not implemented here because of all the overloading
-      //       and because we dont use these functions anyhow at the moment. 
-      //
-      // map for "easy" usage, meaning initialsation of in and out array inside map call
-      return mapImpl(in.ar, out.ar);
-    }
-
-    bool map(Dict in, ArInit<MAX_OUTPUT_SIZE> out) {
-      // Overoading of map. All overloaded mappings just refer
-      // the logic to mapping-method with complete in and out arrays
-      ArInit<MAX_INPUT_SIZE> inArray;
-      for (int i=0; i<MAX_INPUT_SIZE; i++) inArray[i] = 2;
-      inArray[input.getPinID(in.key)] = in.value;
-      return mapImpl(inArray.ar, out.ar);
-    }
-
-    bool map(ArInit<MAX_INPUT_SIZE> in, Dict out) {
-      // Overoading of map.
-      ArInit<MAX_OUTPUT_SIZE> outArray;
-      for (int i=0; i<MAX_OUTPUT_SIZE; i++) outArray[i] = 2;
-      outArray[output.getPinID(out.key)] = out.value;
-      return mapImpl(in.ar, outArray.ar);
-    }
-
-    bool map(Dict in, Dict out) {
-      // Overoading of map.
-      ArInit<MAX_INPUT_SIZE> inArray;
-      for (int i=0; i<MAX_INPUT_SIZE; i++) inArray[i] = 2;
-      inArray[input.getPinID(in.key)] = in.value;
-      ArInit<MAX_OUTPUT_SIZE> outArray;
-      for (int i=0; i<MAX_OUTPUT_SIZE; i++) outArray[i] = 2;
-      outArray[output.getPinID(out.key)] = out.value;
-      return mapImpl(inArray.ar, outArray.ar);
     }
 
     void checkConnection() {
@@ -675,16 +592,87 @@ class Machine {
 
       // TODO: check the implementation of the timeout agains rollover of millis()
       if (!ethernetConnected && millis() >= timerReconnect) {
-        Serial.println("Trying to reconnect...");
+        Serial.println(F("Trying to reconnect..."));
         ethernetConnected = client.connect(server, 4000);
         timerReconnect = millis() + waitReconnect;
-        Serial.print("Connectionstatus: ");
+        Serial.print(F("Connectionstatus: "));
         Serial.println(ethernetConnected);
       }
-
     }
 
 };
+
+    // bool mapImpl(byte (&inputArray)[MAX_INPUT_SIZE], byte (&outputArray)[MAX_OUTPUT_SIZE]) {
+    //   // Set all outputs to a given state if all inputs are in a given state.
+    //   // Parameters: inputArray: int array of length MAX_INPUT_SIZE
+    //   //             elements can be: 0: check if state of pin on same position
+    //   //                                 in the inputPinLayout is 0
+    //   //                              1: check if state of pin is 1
+    //   //                              2: do not check state of pin
+    //   //             outputArray: int array of length MAX_OUTPUT_SIZE
+    //   //             elements can be: 0: set state to 0
+    //   //                              1: set state to 1
+    //   //                              2: do not set state
+    //   // Returns: false: if output is not changed
+    //   //          true: if output is changed
+    //   //
+    //   // Usage example:
+    //   //    Dict in;
+    //   //    ArInit<MAX_OUTPUT_SIZE> out;
+    //   //    controller.map(in = {"sourceFlow_2", 1}, out = {0,0,0,2,2,2,2,2,2,2,0,2});
+
+    //   if (output.isAllreadySet(outputArray)) {
+    //     // do not repeat test if output is allready set anyway
+    //     return false;
+    //   }
+
+    //   if (input.compare(inputArray)) {
+    //     output.setOutput(outputArray);
+    //     sensorError = true;
+    //     JsonObject & root = jsonBuild("sensorEvent");
+    //     jsonAddArray(root, "input", inputArray);
+    //     jsonAddArray(root, "output", outputArray);
+    //     jsonSend(root);
+    //     return true;
+    //   }
+    //   return false;
+    // }
+
+    // bool map(ArInit<MAX_INPUT_SIZE> in, ArInit<MAX_OUTPUT_SIZE> out) {
+    //   // NOTE: the rechecking of changed readings is not implemented here because of all the overloading
+    //   //       and because we dont use these functions anyhow at the moment. 
+    //   //
+    //   // map for "easy" usage, meaning initialsation of in and out array inside map call
+    //   return mapImpl(in.ar, out.ar);
+    // }
+
+    // bool map(Dict in, ArInit<MAX_OUTPUT_SIZE> out) {
+    //   // Overoading of map. All overloaded mappings just refer
+    //   // the logic to mapping-method with complete in and out arrays
+    //   ArInit<MAX_INPUT_SIZE> inArray;
+    //   for (int i=0; i<MAX_INPUT_SIZE; i++) inArray[i] = 2;
+    //   inArray[input.getPinID(in.key)] = in.value;
+    //   return mapImpl(inArray.ar, out.ar);
+    // }
+
+    // bool map(ArInit<MAX_INPUT_SIZE> in, Dict out) {
+    //   // Overoading of map.
+    //   ArInit<MAX_OUTPUT_SIZE> outArray;
+    //   for (int i=0; i<MAX_OUTPUT_SIZE; i++) outArray[i] = 2;
+    //   outArray[output.getPinID(out.key)] = out.value;
+    //   return mapImpl(in.ar, outArray.ar);
+    // }
+
+    // bool map(Dict in, Dict out) {
+    //   // Overoading of map.
+    //   ArInit<MAX_INPUT_SIZE> inArray;
+    //   for (int i=0; i<MAX_INPUT_SIZE; i++) inArray[i] = 2;
+    //   inArray[input.getPinID(in.key)] = in.value;
+    //   ArInit<MAX_OUTPUT_SIZE> outArray;
+    //   for (int i=0; i<MAX_OUTPUT_SIZE; i++) outArray[i] = 2;
+    //   outArray[output.getPinID(out.key)] = out.value;
+    //   return mapImpl(inArray.ar, outArray.ar);
+    // }
 
 
 Machine controller;
@@ -707,113 +695,182 @@ void setup() {
   // Remember to set MAX_INPUT_SIZE and MAX_OUTPUT_SIZE at the beginning of this
   // script correctly, i.e. length of input and output layout respectively.
   Pin inputPinLayout[] = {
-    {"M:B1", CONTROLLINO_A0, 0},
-    {"M:B2", CONTROLLINO_A1, 0},
-    {"M:B3", CONTROLLINO_A2, 0},
-    {"M:B4", CONTROLLINO_A3, 0},
-    {"M:B5", CONTROLLINO_A4, 0},
-    {"M:B6", CONTROLLINO_A5, 0},
-    {"M:B7", CONTROLLINO_A6, 0},
-    {"M:B8", CONTROLLINO_A7, 0},
-    {"M:B9", CONTROLLINO_A8, 0},
-    {"M:B10", CONTROLLINO_A9, 0},
-    {"M:B11", CONTROLLINO_A10, 0},
-    {"M:B12", CONTROLLINO_A11, 0},
-    {"M:B13", CONTROLLINO_A12, 0},
-    {"M:B14", CONTROLLINO_A13, 0},
-    {"M:B15", CONTROLLINO_A14, 0},
-    {"M:B16", CONTROLLINO_A15, 0},
-    {"S:B17", CONTROLLINO_A0, 0},
-    {"S:B18", CONTROLLINO_A1, 0},
-    {"S:foo", CONTROLLINO_A8, 0},
-    {"S:bar", CONTROLLINO_A9, 0}
+    {F("M:B01"), CONTROLLINO_A0, 0},
+    {F("M:B02"), CONTROLLINO_A1, 0},
+    {F("M:B03"), CONTROLLINO_A2, 0},
+    {F("M:B04"), CONTROLLINO_A3, 0},
+    {F("M:B05"), CONTROLLINO_A4, 0},
+    {F("M:B06"), CONTROLLINO_A5, 0},
+    {F("M:B07"), CONTROLLINO_A6, 0},
+    {F("M:B08"), CONTROLLINO_A7, 0},
+    {F("M:B09"), CONTROLLINO_A8, 0},
+    {F("M:B10"), CONTROLLINO_A9, 0},
+    {F("M:B11"), CONTROLLINO_A10, 0},
+    {F("M:B12"), CONTROLLINO_A11, 0},
+    {F("M:B13"), CONTROLLINO_A12, 0},
+    {F("M:B14"), CONTROLLINO_A13, 0},
+    {F("M:B15"), CONTROLLINO_A14, 0},
+    {F("M:B16"), CONTROLLINO_A15, 0},
+    {F("S:B17"), CONTROLLINO_A0, 0},
+    {F("S:B18"), CONTROLLINO_A1, 0},
+    {F("S:B19"), CONTROLLINO_A2, 0},
+    {F("S:B20"), CONTROLLINO_A3, 0},
+    {F("S:B21"), CONTROLLINO_A4, 0},
+    {F("S:B22"), CONTROLLINO_A5, 0},
+    {F("S:B23"), CONTROLLINO_A6, 0},
+    {F("S:B24"), CONTROLLINO_A7, 0},
+    {F("S:B25"), CONTROLLINO_A8, 0},
+    {F("S:B26"), CONTROLLINO_A9, 0},
+    {F("S:B27"), CONTROLLINO_A10, 0},
+    {F("S:B28"), CONTROLLINO_A11, 0},
+    {F("S:B29"), CONTROLLINO_A12, 0},
+    {F("S:B30"), CONTROLLINO_A13, 0},
+    {F("S:B31"), CONTROLLINO_A14, 0},
+    {F("S:B32"), CONTROLLINO_A15, 0}
   };
 
+  // Pin outputPinLayout[] = {
+  //   {"M:HS20_source1", CONTROLLINO_D0, 1},
+  //   {"M:roots1_source1", CONTROLLINO_D1, 1},
+  //   {"M:roots2_source1", CONTROLLINO_D2, 1},
+  //   {"M:valve_source1", CONTROLLINO_D3, 1},
+  //   {"M:backingpump_source1", CONTROLLINO_D4, 1},
+  //   {"M:V0184_chop1", CONTROLLINO_D5, 1},
+  //   {"M:valve_chop1", CONTROLLINO_D6, 1},
+  //   {"M:backingpump_chop1", CONTROLLINO_D7, 1},
+  //   {"M:HS20_source2", CONTROLLINO_D8, 1},
+  //   {"M:roots1_source2", CONTROLLINO_D9, 1},
+  //   {"M:roots2_source2", CONTROLLINO_D10, 1},
+  //   {"M:valve_source2", CONTROLLINO_D11, 1},
+  //   {"M:backingpump_source2", CONTROLLINO_D12, 1},
+  //   {"M:V0183_chop2", CONTROLLINO_D13, 1},
+  //   {"M:valve_chop2", CONTROLLINO_D14, 1},
+  //   {"M:backingpump_chop2", CONTROLLINO_D15, 1},
+  //   {"M:turbopump1_scatt", CONTROLLINO_D16, 1},
+  //   {"M:turbopump2_scatt", CONTROLLINO_D17, 1},
+  //   {"M:Ed100_scatt", CONTROLLINO_D18, 1},
+  //   {"M:Ed63_scatt", CONTROLLINO_D19, 1},
+  //   {"M:valve_scatt", CONTROLLINO_R0, 1},
+  //   {"M:backinpump_scatt", CONTROLLINO_R1, 1},
+  //   {"M:turbopump_pitot", CONTROLLINO_R2, 1},
+  //   {"M:2xEd1001_tof", CONTROLLINO_R3, 1},
+  //   {"M:valve_tof", CONTROLLINO_R4, 1},
+  //   {"M:backingpump_tof", CONTROLLINO_R5, 1},
+  //   {"M:2xEd1002_tof", CONTROLLINO_R6, 1},
+  //   {"M:turbopump_det", CONTROLLINO_R7, 1},
+  //   {"M:Ed63_det", CONTROLLINO_R8, 1},
+  //   {"M:valve_det", CONTROLLINO_R9, 1},
+  //   {"M:backingpump_det", CONTROLLINO_R10, 1},
+  //   {"S:waterflow_1", CONTROLLINO_D2, 1},
+  //   {"S:waterflow_2", CONTROLLINO_D5, 1},
+  //   {"S:foz", CONTROLLINO_D8, 1},
+  //   {"S:baz", CONTROLLINO_D9, 1}
+  // };
   Pin outputPinLayout[] = {
-    {"M:HS20_source1", CONTROLLINO_D0, 1},
-    {"M:roots1_source1", CONTROLLINO_D1, 1},
-    {"M:roots2_source1", CONTROLLINO_D2, 1},
-    {"M:valve_source1", CONTROLLINO_D3, 1},
-    {"M:backingpump_source1", CONTROLLINO_D4, 1},
-    {"M:V0184_chop1", CONTROLLINO_D5, 1},
-    {"M:valve_chop1", CONTROLLINO_D6, 1},
-    {"M:backingpump_chop1", CONTROLLINO_D7, 1},
-    {"M:HS20_source2", CONTROLLINO_D8, 1},
-    {"M:roots1_source2", CONTROLLINO_D9, 1},
-    {"M:roots2_source2", CONTROLLINO_D10, 1},
-    {"M:valve_source2", CONTROLLINO_D11, 1},
-    {"M:backingpump_source2", CONTROLLINO_D12, 1},
-    {"M:V0183_chop2", CONTROLLINO_D13, 1},
-    {"M:valve_chop2", CONTROLLINO_D14, 1},
-    {"M:backingpump_chop2", CONTROLLINO_D15, 1},
-    {"M:turbopump1_scatt", CONTROLLINO_D16, 1},
-    {"M:turbopump2_scatt", CONTROLLINO_D17, 1},
-    {"M:Ed100_scatt", CONTROLLINO_D18, 1},
-    {"M:Ed63_scatt", CONTROLLINO_D19, 1},
-    {"M:valve_scatt", CONTROLLINO_R0, 1},
-    {"M:backinpump_scatt", CONTROLLINO_R1, 1},
-    {"M:turbopump_pitot", CONTROLLINO_R2, 1},
-    {"M:2xEd1001_tof", CONTROLLINO_R3, 1},
-    {"M:valve_tof", CONTROLLINO_R4, 1},
-    {"M:backingpump_tof", CONTROLLINO_R5, 1},
-    {"M:2xEd1002_tof", CONTROLLINO_R6, 1},
-    {"M:turbopump_det", CONTROLLINO_R7, 1},
-    {"M:Ed63_det", CONTROLLINO_R8, 1},
-    {"M:valve_det", CONTROLLINO_R9, 1},
-    {"M:backingpump_det", CONTROLLINO_R10, 1},
-    {"S:waterflow_1", CONTROLLINO_D2, 1},
-    {"S:waterflow_2", CONTROLLINO_D5, 1},
-    {"S:foz", CONTROLLINO_D8, 1},
-    {"S:baz", CONTROLLINO_D9, 1}
+    {F("M:G10"), CONTROLLINO_D0, 1},
+    {F("M:G11"), CONTROLLINO_D1, 1},
+    {F("M:G12"), CONTROLLINO_D2, 1},
+    {F("M:G10"), CONTROLLINO_D3, 1},
+    {F("M:G10"), CONTROLLINO_D4, 1},
+    {F("M:G10"), CONTROLLINO_D5, 1},
+    {F("M:G10"), CONTROLLINO_D6, 1},
+    {F("M:G10"), CONTROLLINO_D7, 1},
+    {F("M:G10"), CONTROLLINO_D8, 1},
+    {F("M:G10"), CONTROLLINO_D9, 1},
+    {F("M:G10"), CONTROLLINO_D10, 1},
+    {F("M:G10"), CONTROLLINO_D11, 1},
+    {F("M:G10"), CONTROLLINO_D12, 1},
+    {F("M:G10"), CONTROLLINO_D13, 1},
+    {F("M:G10"), CONTROLLINO_D14, 1},
+    {F("M:G10"), CONTROLLINO_D15, 1},
+    {F("M:G10"), CONTROLLINO_D16, 1},
+    {F("M:G10"), CONTROLLINO_D17, 1},
+    {F("M:G10"), CONTROLLINO_D18, 1},
+    {F("M:G10"), CONTROLLINO_D19, 1},
+    {F("M:G10"), CONTROLLINO_R0, 1},
+    {F("M:G10"), CONTROLLINO_R1, 1},
+    {F("M:G10"), CONTROLLINO_R2, 1},
+    {F("M:G10"), CONTROLLINO_R3, 1},
+    {F("M:G10"), CONTROLLINO_R4, 1},
+    {F("M:G10"), CONTROLLINO_R5, 1},
+    {F("M:G10"), CONTROLLINO_R6, 1},
+    {F("M:G10"), CONTROLLINO_R7, 1},
+    {F("M:G10"), CONTROLLINO_R8, 1},
+    {F("M:G10"), CONTROLLINO_R9, 1},
+    {F("M:G10"), CONTROLLINO_R10, 1},
+    {F("S:G10"), CONTROLLINO_D2, 1},
+    {F("S:G10"), CONTROLLINO_D5, 1},
+    {F("S:G10"), CONTROLLINO_D8, 1},
+    {F("S:G10"), CONTROLLINO_D9, 1}
   };
 
+byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
+//Input\Output :D00,D01,D02,D03,D04,D05,D06,D07,D08,D09,D10,D11,D12,D13,D14,D15,D16,D17,D18,D19,R00,R01,R02,R03,R04,R05,R06,R07,R08,R09,R10,S01,S02,S08,S09
+                {0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A0
 
-  byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
-  //Input\Output :D00,D01,D02,D03,D04,D05,D06,D07,D08,D09,D10,D11,D12,D13,D14,D15,D16,D17,D18,D19,R00,R01,R02,R03,R04,R05,R06,R07,R08,R09,R10,S01,S02,S08,S09
-                  {0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A0
+                {0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A1
+                
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A2
+                
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A3
+                
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2 , 0 , 2 , 2}, // CONTROLLINO_A4
+                
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A5
+                
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2 , 0 , 2 , 2}, // CONTROLLINO_A6
+                
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2}, // CONTROLLINO_A7
+                
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2},  // CONTROLLINO_A8
 
-                  {0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A1
-                 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A2
-                 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A3
-                 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2 , 2 , 2 , 2}, // CONTROLLINO_A4
-                 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A5
-                 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2 , 2 , 2 , 2}, // CONTROLLINO_A6
-                 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2}, // CONTROLLINO_A7
-                 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A8
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2},  // CONTROLLINO_A9
 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A9
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2},  // CONTROLLINO_A10
 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A10
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2},  // CONTROLLINO_A11
 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A11
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2},  // CONTROLLINO_A12
 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A12
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2},  // CONTROLLINO_A13
 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A13
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2},  // CONTROLLINO_A14
 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A14
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2},  // CONTROLLINO_A15
 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2},  // CONTROLLINO_A15
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
 
-                  {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
 
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
 
-  };
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
 
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
 
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+
+                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2 , 2},  // S:CONTROLLINO_A?
+
+};
 
 
   // start Serial and check if its connected correctly
@@ -821,7 +878,7 @@ void setup() {
   int startTime = millis();
   while(!Serial) {
     // sanity check
-    Serial.println("Inside while !Serial. Something is very wrong.");
+    Serial.println(F("Inside while !Serial. Something is very wrong."));
     if (millis() - startTime >= 10000) {
       break;
     }
@@ -840,12 +897,12 @@ void setup() {
 
 
   // enable connection with server (rpi) over port 4000
-  Serial.println("Start connecting with ethernet...");
+  Serial.println(F("Start connecting with ethernet..."));
   controller.ethernetConnected = client.connect(server, 4000);
   if (controller.ethernetConnected) {
-    Serial.println("Connected.");
+    Serial.println(F("Connected."));
   } else {
-    Serial.println("Connection failed.");
+    Serial.println(F("Connection failed."));
     controller.timerReconnect = millis();
   }
 
