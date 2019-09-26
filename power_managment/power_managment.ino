@@ -35,7 +35,8 @@ int slavePinLookup[69] = {-1, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, -1
 
 
 
-const size_t capacity = JSON_ARRAY_SIZE(72) + JSON_ARRAY_SIZE(32) + JSON_OBJECT_SIZE(5) + 50;
+// enough for 72 bytes from output array with "changedIndex":4 and "Type": "sensorevent" but not for totalIn
+const size_t capacity = 650;
 JsonObject & jsonBuild (String type){
   // build JsonObject with type denoting type of json message
   // the returned object should never live in the global scope
@@ -153,10 +154,10 @@ class Inputs {
         int registerIndex = slavePinLookup[mpin.pinNumber - 1];
 
         if (registerIndex == -1) {
-          String errorMessage = "Slave has no pin with pin number: " + String(inputData[inputNumber].pinNumber)
-                                 + "Ignoring this query.";
+          String errorMessage = F("Slave has no pin with this pin number. Ignoring this input.");
           JsonObject & root = jsonBuild(F("error"));
           root[F("error")] = errorMessage;
+          root[F("pinNumber")] = mpin.pinNumber;
           jsonSend(root);
         }
       
@@ -198,7 +199,6 @@ class Inputs {
             continue;
           }
           inputRepr[i] = inputData[i].pinState = tempInput;
-          Serial.println("sensorEvent is detected in getChanges()");
           if (tempInput!=normalInput[i]) {
             return i;
           }
@@ -374,7 +374,6 @@ class Outputs {
 
         unsigned long startTime = millis();
         while(ControllinoModbusMaster.getState() != COM_IDLE &&  millis() - startTime < slaveOutputTimeout) {
-          //Serial.println("Inside while not COM_IDLE");
           ControllinoModbusMaster.poll();
         }
         
@@ -400,9 +399,7 @@ class Outputs {
       }
       JsonObject & root = jsonBuild("setAllOutputs");
       jsonAddArray(root, "changedOut", configArray);
-      jsonAddArray(root, "totalOut", outputRepr);
       jsonSend(root);
-      Serial.println("normal output is set and json is tried.");
     }
 
     void setNormalOutput() {
@@ -579,7 +576,6 @@ class Machine {
         }
 
         JsonObject & root = jsonBuild(F("sensorEvent"));
-        jsonAddArray(root, F("totalIn"), input.inputRepr);
         root[F("changedIn")] = changedIndex;
         jsonAddArray(root,F("totalOut"), output.outputRepr);
         jsonSend(root);
@@ -877,8 +873,6 @@ byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
   Serial.begin(9600);
   int startTime = millis();
   while(!Serial) {
-    // sanity check
-    Serial.println(F("Inside while !Serial. Something is very wrong."));
     if (millis() - startTime >= 10000) {
       break;
     }
@@ -900,6 +894,7 @@ byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
   Serial.println(F("Start connecting with ethernet..."));
   controller.ethernetConnected = client.connect(server, 4000);
   if (controller.ethernetConnected) {
+    //TODO: change this to log message
     Serial.println(F("Connected."));
   } else {
     Serial.println(F("Connection failed."));

@@ -94,6 +94,11 @@ void loop()
     // (ModbusSlaveRegisters).
     // Main parameters of the instance poll are address of the internal registers and number of internal registers.
     ControllinoModbusSlave.poll(ModbusSlaveRegisters, 52);
+    for (int i = 0; i<52; i++) {
+        Serial.print(ModbusSlaveRegisters[i]);
+        Serial.print(" ");
+    }
+    Serial.println();
 
     // While receiving or sending data, the Modbus slave device periodically reads the values of the digital outputs
     // ,writes them to the register and updates the output states.
