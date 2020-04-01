@@ -4,8 +4,8 @@
 #include <Ethernet.h>
 
 
-const int MAX_INPUT_SIZE = 32; //18; // number of input elements
-const int MAX_OUTPUT_SIZE = 34; //33; // number of outputs elements
+const int MAX_INPUT_SIZE = 7; // number of input elements
+const int MAX_OUTPUT_SIZE = 10; // number of outputs elements
 
 
 
@@ -332,7 +332,7 @@ class Machine {
     // flag to indicate wether a sensor is showing an error
     bool sensorError = false;
     // timing start for rechecking of ethernet connection in milliseconds
-    unsigned long timerReconnect = 0;
+    unsigned long startTimeReconnect = 0;
     // time between recheckings of ethernet connection in milliseconds
     int waitReconnect = 20000;
 
@@ -390,11 +390,11 @@ class Machine {
       // If not and timer for retry has run down: try to reconnect
 
       // TODO: check the implementation of the timeout agains rollover of millis()
-      if (!client.connected() && millis() >= timerReconnect) {
+      if (!client.connected() && millis() - startTimeReconnect >= waitReconnect) {
+        startTimeReconnect = millis();
         Serial.println(F("Trying to reconnect..."));
         client.stop();
         client.connect(server, 4000);
-        timerReconnect = millis() + waitReconnect;
         Serial.print(F("Connectionstatus: "));
         Serial.println(client.connected());
       }
@@ -423,38 +423,14 @@ void setup() {
   // Remember to set MAX_INPUT_SIZE and MAX_OUTPUT_SIZE at the beginning of this
   // script correctly, i.e. length of input and output layout respectively.
   Pin inputPinLayout[] = {
-    {F("M:B01"), CONTROLLINO_A0, 0},
-    {F("M:B02"), CONTROLLINO_A1, 0},
-    {F("M:B03"), CONTROLLINO_A2, 0},
-    {F("M:B04"), CONTROLLINO_A3, 0},
-    {F("M:B05"), CONTROLLINO_A4, 0},
-    {F("M:B06"), CONTROLLINO_A5, 0},
-    {F("M:B07"), CONTROLLINO_A6, 0},
-    {F("M:B08"), CONTROLLINO_A7, 0},
-    {F("M:B09"), CONTROLLINO_A8, 0},
-    {F("M:B10"), CONTROLLINO_A9, 0},
-    {F("M:B11"), CONTROLLINO_A10, 0},
-    {F("M:B12"), CONTROLLINO_A11, 0},
-    {F("M:B13"), CONTROLLINO_A12, 0},
-    {F("M:B14"), CONTROLLINO_A13, 0},
-    {F("M:B15"), CONTROLLINO_A14, 0},
-    {F("M:B16"), CONTROLLINO_A15, 0},
-    {F("S:B17"), CONTROLLINO_A0, 0},
-    {F("S:B18"), CONTROLLINO_A1, 0},
-    {F("S:B19"), CONTROLLINO_A2, 0},
-    {F("S:B20"), CONTROLLINO_A3, 0},
-    {F("S:B21"), CONTROLLINO_A4, 0},
-    {F("S:B22"), CONTROLLINO_A5, 0},
-    {F("S:B23"), CONTROLLINO_A6, 0},
-    {F("S:B24"), CONTROLLINO_A7, 0},
-    {F("S:B25"), CONTROLLINO_A8, 0},
-    {F("S:B26"), CONTROLLINO_A9, 0},
-    {F("S:B27"), CONTROLLINO_A10, 0},
-    {F("S:B28"), CONTROLLINO_A11, 0},
-    {F("S:B29"), CONTROLLINO_A12, 0},
-    {F("S:B30"), CONTROLLINO_A13, 0},
-    {F("S:B31"), CONTROLLINO_A14, 0},
-    {F("S:B32"), CONTROLLINO_A15, 0}
+    {F("M:B01"), CONTROLLINO_A0, 1}, //H2O flow sensor
+    {F("M:B02"), CONTROLLINO_A1, 1}, //H2O flow sensor
+    {F("M:B03"), CONTROLLINO_A2, 1}, //H2O flow sensor
+    {F("M:B04"), CONTROLLINO_A3, 1}, //H2O flow sensor
+    {F("M:B05"), CONTROLLINO_A4, 1}, //H2O flow sensor
+    {F("M:B06"), CONTROLLINO_A5, 1}, //H2O flow sensor
+    {F("M:B07"), CONTROLLINO_A6, 1}, //H2O ground sensor
+
   };
 
   // Pin outputPinLayout[] = {
@@ -495,76 +471,28 @@ void setup() {
   //   {"S:baz", CONTROLLINO_D9, 1}
   // };
   Pin outputPinLayout[] = {
-    {F("M:G10"), CONTROLLINO_D0, 1},
-    {F("M:G11"), CONTROLLINO_D1, 1},
-    {F("M:G12"), CONTROLLINO_D2, 1},
-    {F("M:G10"), CONTROLLINO_D3, 1},
-    {F("M:G10"), CONTROLLINO_D4, 1},
-    {F("M:G10"), CONTROLLINO_D5, 1},
-    {F("M:G10"), CONTROLLINO_D6, 1},
-    {F("M:G10"), CONTROLLINO_D7, 1},
-    {F("M:G10"), CONTROLLINO_D8, 1},
-    {F("M:G10"), CONTROLLINO_D9, 1},
-    {F("M:G10"), CONTROLLINO_D10, 1},
-    {F("M:G10"), CONTROLLINO_D11, 1},
-    {F("M:G10"), CONTROLLINO_D12, 1},
-    {F("M:G10"), CONTROLLINO_D13, 1},
-    {F("M:G10"), CONTROLLINO_D14, 1},
-    {F("M:G10"), CONTROLLINO_D15, 1},
-    {F("M:G10"), CONTROLLINO_D16, 1},
-    {F("M:G10"), CONTROLLINO_D17, 1},
-    {F("M:G10"), CONTROLLINO_D18, 1},
-    {F("M:G10"), CONTROLLINO_D19, 1},
-    {F("M:G10"), CONTROLLINO_R0, 1},
-    {F("M:G10"), CONTROLLINO_R1, 1},
-    {F("M:G10"), CONTROLLINO_R2, 1},
-    {F("M:G10"), CONTROLLINO_R3, 1},
-    {F("M:G10"), CONTROLLINO_R4, 1},
-    {F("M:G10"), CONTROLLINO_R5, 1},
-    {F("M:G10"), CONTROLLINO_R6, 1},
-    {F("M:G10"), CONTROLLINO_R7, 1},
-    {F("M:G10"), CONTROLLINO_R8, 1},
-    {F("M:G10"), CONTROLLINO_R9, 1},
-    {F("M:G10"), CONTROLLINO_R10, 1},
-    {F("S:G10"), CONTROLLINO_D0, 1},
-    {F("S:G10"), CONTROLLINO_D1, 1},
-    {F("S:G10"), CONTROLLINO_D2, 1},
+    {F("M:G31"), CONTROLLINO_R2, 1},
+    {F("M:G67"), CONTROLLINO_R3, 1},
+    {F("M:G32"), CONTROLLINO_R4, 1},
+    {F("M:G33"), CONTROLLINO_R5, 1},
+    {F("M:G68"), CONTROLLINO_R6, 1},
+    {F("M:G34"), CONTROLLINO_R7, 1},
+    {F("M:G64"), CONTROLLINO_R8, 1},
+    {F("M:G35"), CONTROLLINO_R9, 1},
+    {F("M:G36"), CONTROLLINO_R10, 1},
+    {F("M:G42"), CONTROLLINO_R11, 1},
+
   };
 
 byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
-//Input\Output :D00,D01,D02,D03,D04,D05,D06,D07,D08,D09,D10,D11,D12,D13,D14,D15,D16,D17,D18,D19,R00,R01,R02,R03,R04,R05,R06,R07,R08,R09,R10,S00,S01,S02
-                {0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO
-                {0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A1
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A2
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A3
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2 , 0 , 2}, // CONTROLLINO_A4
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A5
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2 , 0 , 2}, // CONTROLLINO_A6
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A7
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A8
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A9
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A10
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A11
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A12
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A13
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A14
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2}, // CONTROLLINO_A15
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A0
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A1
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A2
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A3
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A4
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A5
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A6
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A7
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A8
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A9
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A10
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A11
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A12
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A13
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A14
-                {2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 2 , 0 , 2 , 0 , 0 , 2}, // S:CONTROLLINO_A15
+//Input\Output :R02,R03,R04,R05,R06,R07,R08,R09,R10,R11
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A0, H20 Flow Sensor
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A1, H20 Flow Sensor
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A2, H20 Flow Sensor
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A3, H20 Flow Sensor
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A4, H20 Flow Sensor
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A5, H20 Flow Sensor
+                {0 , 0 , 2 , 2 , 0 , 0 , 0 , 2 , 2 , 0}, // CONTROLLINO_A6, H20 Ground Sensor
 };
 
 
@@ -572,7 +500,7 @@ byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
   Serial.begin(9600);
   int startTime = millis();
   while(!Serial) {
-    if (millis() - startTime >= 10000) {
+    if (millis() - startTime >= 5000) {
       break;
     }
   }
@@ -596,7 +524,7 @@ byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
     Serial.println(F("Connected."));
   } else {
     Serial.println(F("Connection failed."));
-    controller.timerReconnect = millis();
+    controller.startTimeReconnect = millis();
   }
 
   // initilize controller with input and output pins
