@@ -1,11 +1,13 @@
 import json
 import logging as lo
 import socket
+import sys
+import time
 
 
 class Handler(object):
 
-    def __init__(self):
+    def __init__(self, server, port):
         #init logging
         self.root_log = lo.getLogger()
         formatter = lo.Formatter("%(asctime)s %(levelname)s %(message)s")
@@ -19,34 +21,52 @@ class Handler(object):
         self.root_log.addHandler(console_handler)
         #set log level
         self.root_log.setLevel(lo.INFO)
+        self.root_log.info("Initialized logging.")
 
-        self.server_address = "192.168.2.10"
-        self.port = 4000 
+        self.server = server
+        self.port = port
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.bind_socket()
 
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # correct default settings?
+
+    def bind_socket(self):
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((self.server_address, self.port))
-        
+        self.root_log.info("Trying to bind socket...")
+        for i in range(11):
+            try:
+                self.sock.bind((self.server, self.port))
+                self.root_log.info("Socket binding successfull with address: {} on port {}".format(self.server, self.port))
+                break
+            except OSError:
+                time.sleep(1)
+                if i==10:
+                    self.root_log.warn("Socket binding to adress: {} on port {} failed. Exiting programm...".format(self.server, self.port))
+                    sys.exit()
+
     def getConn(self):
         self.sock.listen(1)
-        print("Waiting for incoming connection...")
+        self.root_log.info("Waiting for incoming connection...")
+        self.sock.settimeout(30)
         conn, addr = self.sock.accept()
-        print("Connected address is: {}".format(addr))
+        self.root_log.info("Connected address is: {}".format(addr))
+        self.sock.settimeout(None)
         return conn
 
-    def listen(self, conn):
-        with conn:
-            f = conn.makefile(mode="r")
-
+    def __call__(self, conn):
+        with conn.makefile(mode="r") as f:
             while True:
                 line = f.readline().strip()
                 self.root_log.info(line)
 
-    def __call__(self):
-        mconn = self.getConn()
-        self.listen(mconn)
             
 if __name__=="__main__":
 
-    gihas_handler = Handler()
-    gihas_handler()
+    gihas_handler = Handler("192.168.2.10", 4000)
+    try:
+        conn = gihas_handler.getConn()
+    except socket.timeout:
+        gihas_handler.root_log.warn("Could not find connection with client after {} seconds. Exiting program...".format(gihas_handler.sock.gettimeout()))
+        sys.exit()
+    with conn:
+        gihas_handler(conn)
+    
