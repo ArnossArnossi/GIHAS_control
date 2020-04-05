@@ -4,7 +4,7 @@
 #include <Ethernet.h>
 
 
-const int MAX_INPUT_SIZE = 7; // number of input elements
+const int MAX_INPUT_SIZE = 16; // number of input elements
 const int MAX_OUTPUT_SIZE = 10; // number of outputs elements
 
 
@@ -389,7 +389,6 @@ class Machine {
       // Check if ethernet is connected.
       // If not and timer for retry has run down: try to reconnect
 
-      // TODO: check the implementation of the timeout agains rollover of millis()
       if (!client.connected() && millis() - startTimeReconnect >= waitReconnect) {
         startTimeReconnect = millis();
         Serial.println(F("Trying to reconnect..."));
@@ -423,53 +422,24 @@ void setup() {
   // Remember to set MAX_INPUT_SIZE and MAX_OUTPUT_SIZE at the beginning of this
   // script correctly, i.e. length of input and output layout respectively.
   Pin inputPinLayout[] = {
-    {F("M:B01"), CONTROLLINO_A0, 1}, //H2O flow sensor
-    {F("M:B02"), CONTROLLINO_A1, 1}, //H2O flow sensor
-    {F("M:B03"), CONTROLLINO_A2, 1}, //H2O flow sensor
-    {F("M:B04"), CONTROLLINO_A3, 1}, //H2O flow sensor
-    {F("M:B05"), CONTROLLINO_A4, 1}, //H2O flow sensor
-    {F("M:B06"), CONTROLLINO_A5, 1}, //H2O flow sensor
-    {F("M:B07"), CONTROLLINO_A6, 1}, //H2O ground sensor
-
+    {F("M:B01"), CONTROLLINO_A0, 0},
+    {F("M:B02"), CONTROLLINO_A1, 0},
+    {F("M:B03"), CONTROLLINO_A2, 0},
+    {F("M:B04"), CONTROLLINO_A3, 0},
+    {F("M:B05"), CONTROLLINO_A4, 0},
+    {F("M:B06"), CONTROLLINO_A5, 0},
+    {F("M:B07"), CONTROLLINO_A6, 0},
+    {F("M:B07"), CONTROLLINO_A7, 0},
+    {F("S:B01"), CONTROLLINO_A0, 0},
+    {F("S:B02"), CONTROLLINO_A1, 0},
+    {F("S:B03"), CONTROLLINO_A2, 0},
+    {F("S:B04"), CONTROLLINO_A3, 0},
+    {F("S:B05"), CONTROLLINO_A4, 0},
+    {F("S:B06"), CONTROLLINO_A5, 0},
+    {F("S:B07"), CONTROLLINO_A6, 0},
+    {F("S:B08"), CONTROLLINO_A6, 0},
   };
 
-  // Pin outputPinLayout[] = {
-  //   {"M:HS20_source1", CONTROLLINO_D0, 1},
-  //   {"M:roots1_source1", CONTROLLINO_D1, 1},
-  //   {"M:roots2_source1", CONTROLLINO_D2, 1},
-  //   {"M:valve_source1", CONTROLLINO_D3, 1},
-  //   {"M:backingpump_source1", CONTROLLINO_D4, 1},
-  //   {"M:V0184_chop1", CONTROLLINO_D5, 1},
-  //   {"M:valve_chop1", CONTROLLINO_D6, 1},
-  //   {"M:backingpump_chop1", CONTROLLINO_D7, 1},
-  //   {"M:HS20_source2", CONTROLLINO_D8, 1},
-  //   {"M:roots1_source2", CONTROLLINO_D9, 1},
-  //   {"M:roots2_source2", CONTROLLINO_D10, 1},
-  //   {"M:valve_source2", CONTROLLINO_D11, 1},
-  //   {"M:backingpump_source2", CONTROLLINO_D12, 1},
-  //   {"M:V0183_chop2", CONTROLLINO_D13, 1},
-  //   {"M:valve_chop2", CONTROLLINO_D14, 1},
-  //   {"M:backingpump_chop2", CONTROLLINO_D15, 1},
-  //   {"M:turbopump1_scatt", CONTROLLINO_D16, 1},
-  //   {"M:turbopump2_scatt", CONTROLLINO_D17, 1},
-  //   {"M:Ed100_scatt", CONTROLLINO_D18, 1},
-  //   {"M:Ed63_scatt", CONTROLLINO_D19, 1},
-  //   {"M:valve_scatt", CONTROLLINO_R0, 1},
-  //   {"M:backinpump_scatt", CONTROLLINO_R1, 1},
-  //   {"M:turbopump_pitot", CONTROLLINO_R2, 1},
-  //   {"M:2xEd1001_tof", CONTROLLINO_R3, 1},
-  //   {"M:valve_tof", CONTROLLINO_R4, 1},
-  //   {"M:backingpump_tof", CONTROLLINO_R5, 1},
-  //   {"M:2xEd1002_tof", CONTROLLINO_R6, 1},
-  //   {"M:turbopump_det", CONTROLLINO_R7, 1},
-  //   {"M:Ed63_det", CONTROLLINO_R8, 1},
-  //   {"M:valve_det", CONTROLLINO_R9, 1},
-  //   {"M:backingpump_det", CONTROLLINO_R10, 1},
-  //   {"S:waterflow_1", CONTROLLINO_D2, 1},
-  //   {"S:waterflow_2", CONTROLLINO_D5, 1},
-  //   {"S:foz", CONTROLLINO_D8, 1},
-  //   {"S:baz", CONTROLLINO_D9, 1}
-  // };
   Pin outputPinLayout[] = {
     {F("M:G31"), CONTROLLINO_R2, 1},
     {F("M:G67"), CONTROLLINO_R3, 1},
@@ -481,18 +451,26 @@ void setup() {
     {F("M:G35"), CONTROLLINO_R9, 1},
     {F("M:G36"), CONTROLLINO_R10, 1},
     {F("M:G42"), CONTROLLINO_R11, 1},
-
   };
 
 byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
 //Input\Output :R02,R03,R04,R05,R06,R07,R08,R09,R10,R11
-                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A0, H20 Flow Sensor
-                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A1, H20 Flow Sensor
-                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A2, H20 Flow Sensor
-                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A3, H20 Flow Sensor
-                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A4, H20 Flow Sensor
-                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A5, H20 Flow Sensor
-                {0 , 0 , 2 , 2 , 0 , 0 , 0 , 2 , 2 , 0}, // CONTROLLINO_A6, H20 Ground Sensor
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A0, 
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A1, 
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A2, 
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A3, 
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A4,
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A5, 
+                {0 , 0 , 2 , 2 , 0 , 0 , 0 , 2 , 2 , 0}, // CONTROLLINO_A6, 
+                {0 , 0 , 2 , 2 , 0 , 0 , 0 , 2 , 2 , 0}, // CONTROLLINO_A7, 
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A0, slave inputs starting here
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A1, 
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A2, 
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A3, 
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A4, 
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A5, 
+                {0 , 0 , 2 , 2 , 0 , 0 , 0 , 2 , 2 , 0}, // CONTROLLINO_A6, 
+                {0 , 0 , 2 , 2 , 0 , 0 , 0 , 2 , 2 , 0}, // CONTROLLINO_A7, 
 };
 
 
