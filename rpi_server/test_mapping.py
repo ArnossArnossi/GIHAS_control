@@ -97,7 +97,7 @@ class TestMapping(object):
             self.handler.root_log.warn("Could not find connection with client after {} seconds. Exiting test...".format(self.handler.sock.gettimeout()))
             sys.exit()
         # wait for plc to finish starting up
-        time.sleep(10)
+        time.sleep(5)
 
     def teardown_method(self):
         disable_outputs()
@@ -125,11 +125,12 @@ class TestMapping(object):
         sim_inputs[sensor_index].on()
         with pytest.raises(TimeoutException):
             with self.conn.makefile(mode="r") as f:
-                msg_timeout = 7
+                msg_timeout = 10
                 signal.alarm(msg_timeout)
                 while True:
                     try:
                         line = f.readline().strip()
+                        self.handler.root_log.info(line)
                     except TimeoutException:
                         if self.test_success:
                             raise TimeoutException
@@ -143,7 +144,7 @@ class TestMapping(object):
                     
                     if msg["type"] == "sensorEvent":
                         # actual testing
-                        assert msg["changedIn"] == sensor_index , "Wrong input has been triggered: {}".format(sensor_index)
+                        assert msg["changedIn"] == sensor_index , "Wrong input has been triggered: {}".format(msg["changedIn"])
                         for i, val in enumerate(expected_output):
                             if val != 2:
                                 assert val == msg["totalOut"][i], "Wrong output state on index: {}".format(i)

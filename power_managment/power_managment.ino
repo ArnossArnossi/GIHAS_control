@@ -437,7 +437,7 @@ void setup() {
     {F("S:B05"), CONTROLLINO_A4, 0},
     {F("S:B06"), CONTROLLINO_A5, 0},
     {F("S:B07"), CONTROLLINO_A6, 0},
-    {F("S:B08"), CONTROLLINO_A6, 0},
+    {F("S:B08"), CONTROLLINO_A7, 0},
   };
 
   Pin outputPinLayout[] = {
