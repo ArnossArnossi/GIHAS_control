@@ -7,12 +7,12 @@ import time
 
 class Handler(object):
 
-    def __init__(self, server, port):
+    def __init__(self, server, port, log_file_path):
         #init logging
         self.root_log = lo.getLogger()
         formatter = lo.Formatter("%(asctime)s %(levelname)s %(message)s")
         #logging to file
-        file_handler = lo.FileHandler("/home/pi/gihas_control.log")
+        file_handler = lo.FileHandler(log_file_path)
         file_handler.setFormatter(formatter)
         self.root_log.addHandler(file_handler)
         #logging to stdout
@@ -61,7 +61,7 @@ class Handler(object):
             
 if __name__=="__main__":
 
-    gihas_handler = Handler("192.168.2.10", 4000)
+    gihas_handler = Handler("192.168.2.10", 4000, "/home/pi/gihas_control.log")
     try:
         conn = gihas_handler.getConn()
     except socket.timeout:

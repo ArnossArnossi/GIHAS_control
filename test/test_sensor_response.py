@@ -120,26 +120,3 @@ class TestSensorResponse(object):
         print(received_data)
         assert type(received_data) is dict, "correct response was not found until timeout"
         compare_output(expected_output, received_data["output"])
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                                
-    
