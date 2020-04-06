@@ -1,10 +1,12 @@
-from ..rpi_server.rpi_server import Handler
+# on RPi this script is located in /home/pi not .../test
+from .rpi_server import Handler
 import gpiozero as go
 import pytest
 import socket
 import sys
 import time
 import json
+import signal
 
 sim_inputs = [
     # GPIO pin numbers of RPi
@@ -47,7 +49,7 @@ mapping = [
     [0 , 0 , 2 , 2 , 0 , 0 , 0 , 2 , 2 , 0], # CONTROLLINO_A7, 
 ]
 
-reset_pin = go.DigitalOutputDevice(21)
+reset_pin = go.DigitalOutputDevice(21, active_high=False)
 
 def init_outputs():
     for i, val in enumerate(sim_inputs):
@@ -66,6 +68,16 @@ def reset_plc():
     time.sleep(.5)
     reset_pin.off()
 
+# timeout stuff
+class TimeoutException(Exception):
+    pass
+
+def timeout_handler(signum, frame):   # Custom signal handler
+    raise TimeoutException 
+
+# Change the behavior of SIGALRM
+signal.signal(signal.SIGALRM, timeout_handler)
+
 
 class TestMapping(object):
 
@@ -77,12 +89,15 @@ class TestMapping(object):
         close_outputs()
 
     def setup_method(self):
+        self.test_success = False
         reset_plc()
         try:
             self.conn = self.handler.getConn()
         except socket.timeout:
             self.handler.root_log.warn("Could not find connection with client after {} seconds. Exiting test...".format(self.handler.sock.gettimeout()))
             sys.exit()
+        # wait for plc to finish starting up
+        time.sleep(10)
 
     def teardown_method(self):
         disable_outputs()
@@ -108,17 +123,28 @@ class TestMapping(object):
     ])
     def test_map(self, sensor_index, expected_output):
         sim_inputs[sensor_index].on()
-        with self.conn.makefile(mode="r") as f:
-            timeout = time.time() + 7 # timeout after 5 seconds
-            while time.time() < timeout:
-                line = f.readline().strip()
-                try:
-                    msg = json.loads(line)
-                except (ValueError):
-                    self.handler.root_log.warn("Could not translate message to json for sensor: {}, message: {}".format(sensor_index, line))
-                if msg["type"] == "sensorEvent":
-                    # actual testing
-                    assert msg["changedIn"] == sensor_index , "Wrong input has been triggered: {}".format(sensor_index)
-                    for i, val in enumerate(expected_output):
-                        if val != 2:
-                            assert val == msg["totalOut"][i], "Wrong output state on index: {}".format(i)
+        with pytest.raises(TimeoutException):
+            with self.conn.makefile(mode="r") as f:
+                msg_timeout = 7
+                signal.alarm(msg_timeout)
+                while True:
+                    try:
+                        line = f.readline().strip()
+                    except TimeoutException:
+                        if self.test_success:
+                            raise TimeoutException
+                        else:
+                            raise AssertionError("No message type:sensorError received from PLC after {} sec.".format(msg_timeout))
+                    
+                    try:
+                        msg = json.loads(line)
+                    except (ValueError):
+                        self.handler.root_log.warn("Could not translate message to json for sensor: {}, message: {}".format(sensor_index, line))
+                    
+                    if msg["type"] == "sensorEvent":
+                        # actual testing
+                        assert msg["changedIn"] == sensor_index , "Wrong input has been triggered: {}".format(sensor_index)
+                        for i, val in enumerate(expected_output):
+                            if val != 2:
+                                assert val == msg["totalOut"][i], "Wrong output state on index: {}".format(i)
+                        self.test_success = True

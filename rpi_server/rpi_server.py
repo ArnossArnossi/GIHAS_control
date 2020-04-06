@@ -32,21 +32,21 @@ class Handler(object):
     def bind_socket(self):
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.root_log.info("Trying to bind socket...")
-        for i in range(11):
+        for i in range(21):
             try:
                 self.sock.bind((self.server, self.port))
                 self.root_log.info("Socket binding successfull with address: {} on port {}".format(self.server, self.port))
                 break
             except OSError:
                 time.sleep(1)
-                if i==10:
+                if i==20:
                     self.root_log.warn("Socket binding to adress: {} on port {} failed. Exiting programm...".format(self.server, self.port))
                     sys.exit()
 
     def getConn(self):
         self.sock.listen(1)
         self.root_log.info("Waiting for incoming connection...")
-        self.sock.settimeout(30)
+        self.sock.settimeout(40)
         conn, addr = self.sock.accept()
         self.root_log.info("Connected address is: {}".format(addr))
         self.sock.settimeout(None)
