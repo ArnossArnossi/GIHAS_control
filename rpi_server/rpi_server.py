@@ -3,11 +3,13 @@ import logging as lo
 import socket
 import sys
 import time
+from GSM_Handler import GSM
+
 
 
 class Handler(object):
 
-    def __init__(self, server, port, log_file_path):
+    def __init__(self, server, port, log_file_path, sms_sender_func = None):
         #init logging
         self.root_log = lo.getLogger()
         formatter = lo.Formatter("%(asctime)s %(levelname)s %(message)s")
@@ -28,6 +30,13 @@ class Handler(object):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.bind_socket()
 
+        if sms_sender_func is not None:
+            self.sms_func = sms_sender_func
+        else:
+            self.sms_func = self.fake_sms_func
+    
+    def fake_sms_func(self, message):
+        pass
 
     def bind_socket(self):
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -56,17 +65,23 @@ class Handler(object):
         with conn.makefile(mode="r") as f:
             while True:
                 line = f.readline().strip()
+                self.sms_func(line) # send entire json as sms
                 self.root_log.info(line)
 
             
 if __name__=="__main__":
 
-    gihas_handler = Handler("192.168.2.10", 4000, "/home/pi/gihas_control.log")
+    gsm_handler= GSM("/dev/ttyAMA0", "+4917256187924")
+    gihas_handler = Handler("192.168.2.10", 4000,
+                            "/home/pi/gihas_control.log",
+                            sms_sender_func=gsm_handler.send_sms)
+
     try:
         conn = gihas_handler.getConn()
     except socket.timeout:
         gihas_handler.root_log.warn("Could not find connection with client after {} seconds. Exiting program...".format(gihas_handler.sock.gettimeout()))
         sys.exit()
+
     with conn:
         gihas_handler(conn)
     
