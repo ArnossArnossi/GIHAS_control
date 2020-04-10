@@ -62,7 +62,7 @@ class Handler(object):
                     self.root_log.warn("Socket binding to adress: {} on port {} failed. Exiting programm...".format(self.server, self.port))
                     sys.exit()
 
-    def getConn(self):
+    def get_connection(self):
         self.sock.listen(1)
         self.root_log.info("Waiting for incoming connection...")
         self.sock.settimeout(40)
@@ -80,7 +80,7 @@ if __name__=="__main__":
                             sms_sender_func=gsm_handler.send_sms)
 
     try:
-        conn = gihas_handler.getConn()
+        conn = gihas_handler.get_connection()
     except socket.timeout:
         gihas_handler.root_log.warn("Could not find connection with client after {} seconds. Exiting program...".format(gihas_handler.sock.gettimeout()))
         sys.exit()

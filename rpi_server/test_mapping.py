@@ -92,7 +92,7 @@ class TestMapping(object):
         self.test_success = False
         reset_plc()
         try:
-            self.conn = self.handler.getConn()
+            self.conn = self.handler.get_connection()
         except socket.timeout:
             self.handler.root_log.warn("Could not find connection with client after {} seconds. Exiting test...".format(self.handler.sock.gettimeout()))
             sys.exit()
