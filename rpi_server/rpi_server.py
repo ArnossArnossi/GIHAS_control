@@ -33,9 +33,18 @@ class Handler(object):
         if sms_sender_func is not None:
             self.sms_func = sms_sender_func
         else:
-            self.sms_func = self.fake_sms_func
+            self.sms_func = self.default_sms_func
     
-    def fake_sms_func(self, message):
+    def __call__(self, conn):
+        with conn.makefile(mode="r") as f:
+            while True:
+                line = f.readline().strip()
+                self.root_log.info(line)
+                success = self.sms_func(line) # send entire json as sms
+                self.root_log.info("Tried to send SMS. Success: {}".format(success))
+
+
+    def default_sms_func(self, message):
         pass
 
     def bind_socket(self):
@@ -60,13 +69,6 @@ class Handler(object):
         self.root_log.info("Connected address is: {}".format(addr))
         self.sock.settimeout(None)
         return conn
-
-    def __call__(self, conn):
-        with conn.makefile(mode="r") as f:
-            while True:
-                line = f.readline().strip()
-                self.sms_func(line) # send entire json as sms
-                self.root_log.info(line)
 
             
 if __name__=="__main__":
