@@ -41,8 +41,14 @@ class Handler(object):
             while True:
                 line = f.readline().strip()
                 self.root_log.info(line)
-                success = self.sms_func(line) # send entire json as sms
-                self.root_log.info("Tried to send SMS. Success: {}".format(success))
+                try:
+                    msg = json.loads(line)
+                except (ValueError):
+                    self.root_log.warn("Could not translate message to json. Message: {}".format(line))
+                    msg = None
+                if msg is not None and msg["type"] == "sensorEvent":
+                    success = self.sms_func(line) # send entire json as sms
+                    self.root_log.info("Tried to send SMS. Success: {}".format(success))
 
 
     def default_sms_func(self, message):
