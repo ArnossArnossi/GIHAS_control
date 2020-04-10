@@ -9,7 +9,7 @@ from GSM_Handler import GSM
 
 class Handler(object):
 
-    def __init__(self, server, port, log_file_path, sms_sender_func = None):
+    def __init__(self, server, port, log_file_path, sms_sender_func = None, binding_timeout = 20):
         #init logging
         self.root_log = lo.getLogger()
         formatter = lo.Formatter("%(asctime)s %(levelname)s %(message)s")
@@ -25,6 +25,7 @@ class Handler(object):
         self.root_log.setLevel(lo.INFO)
         self.root_log.info("Initialized logging.")
 
+        self.binding_timeout = binding_timeout
         self.server = server
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -50,14 +51,14 @@ class Handler(object):
     def bind_socket(self):
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.root_log.info("Trying to bind socket...")
-        for i in range(21):
+        for i in range(self.binding_timeout + 1):
             try:
                 self.sock.bind((self.server, self.port))
                 self.root_log.info("Socket binding successfull with address: {} on port {}".format(self.server, self.port))
                 break
             except OSError:
                 time.sleep(1)
-                if i==20:
+                if i==self.binding_timeout:
                     self.root_log.warn("Socket binding to adress: {} on port {} failed. Exiting programm...".format(self.server, self.port))
                     sys.exit()
 
