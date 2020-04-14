@@ -8,6 +8,17 @@ import time
 import json
 import signal
 
+# setup timeout for test loop
+class TimeoutException(Exception):
+    pass
+
+def timeout_handler(signum, frame):   # Custom signal handler
+    raise TimeoutException 
+
+# Change the behavior of SIGALRM
+signal.signal(signal.SIGALRM, timeout_handler)
+
+
 sim_inputs = [
     # GPIO pin numbers of RPi
     # order of elements correpsonds to
@@ -68,22 +79,13 @@ def reset_plc():
     time.sleep(.5)
     reset_pin.off()
 
-# timeout stuff
-class TimeoutException(Exception):
-    pass
-
-def timeout_handler(signum, frame):   # Custom signal handler
-    raise TimeoutException 
-
-# Change the behavior of SIGALRM
-signal.signal(signal.SIGALRM, timeout_handler)
-
 
 class TestMapping(object):
 
     def setup_class(self):
         init_outputs()
         self.handler = Handler("192.168.2.10", 4000, "/home/pi/testing_plc.log")
+        self.msg_timeout = 10
 
     def teardown_class(self):
         close_outputs()
@@ -125,8 +127,7 @@ class TestMapping(object):
         sim_inputs[sensor_index].on()
         with pytest.raises(TimeoutException):
             with self.conn.makefile(mode="r") as f:
-                msg_timeout = 10
-                signal.alarm(msg_timeout)
+                signal.alarm(self.msg_timeout)
                 while True:
                     try:
                         line = f.readline().strip()
@@ -135,7 +136,7 @@ class TestMapping(object):
                         if self.test_success:
                             raise TimeoutException
                         else:
-                            raise AssertionError("No message type:sensorError received from PLC after {} sec.".format(msg_timeout))
+                            raise AssertionError("No message type:sensorError received from PLC after {} sec.".format(self.msg_timeout))
                     
                     try:
                         msg = json.loads(line)
