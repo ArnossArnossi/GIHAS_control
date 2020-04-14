@@ -3,7 +3,7 @@ import logging as lo
 import socket
 import sys
 import time
-from GSM_Handler import GSM
+from gsm_handler import GSM
 
 
 
