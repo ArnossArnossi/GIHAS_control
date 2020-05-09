@@ -8,24 +8,22 @@ const int MAX_INPUT_SIZE = 16; // number of input elements
 const int MAX_OUTPUT_SIZE = 10; // number of outputs elements
 
 
-
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; // MAC address for controllino.
 IPAddress ip(192, 168, 2, 5); // the static IP address of controllino
 IPAddress server(192,168,2,10);  // numeric IP of the server i.e. rpi
-
 EthernetClient client; // start ethernet client
 
 
 // array in which the digital states of all inputs and outputs of the slave controllino are stored
 // Modbus sends and receives any data to the slave only from this array
 uint16_t ModbusSlaveRegisters[52];
-
-// The object ControllinoModbuSlave of the class Modbus is initialized with three parameters.
-// The first specifies the address of the Modbus master device.
-// The second specifies type of the interface used for communication between devices, RS485.
-// The third can be any number. During the initialization of the object this parameter has no effect.
 Modbus ControllinoModbusMaster(0, 3, 0);
 modbus_t query;
+// receiving (slave) adress
+query.u8id = 1;
+// always only read one register at a time
+query.u16CoilsNo = 1;
+
 // lookup array for index of pin in slave.
 int slavePinLookup[69] = {-1, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, -1, -1, -1, -1, -1, -1, -1,
                           -1, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, 
@@ -34,32 +32,28 @@ int slavePinLookup[69] = {-1, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, -1
                          };
 
 
-
-// enough for 72 bytes from output array with "changedIndex":4 and "Type": "sensorevent" but not for totalIn
+// enough for 72 bytes from output array with
+// "changedIndex":4 and "Type": "sensorevent" but not for totalIn
 const size_t capacity = 650;
 JsonObject & jsonBuild (String type){
-  // build JsonObject with type denoting type of json message
   // the returned object should never live in the global scope
-  // or else it wont be destroyed by garbage collection => memory leak 
+  // or else it wont be destroyed by garbage collection => memory leak
+  // Parameter: type of json message
+  // Return: JSON Object where data can be appended to
 
-  // initilize Json object with certain site. Size has to be
-  // changed according to the size of the json document
-  // 1200 is enough for 32 key value <str, int> pairs for the output and a bit more
   StaticJsonBuffer<capacity> jsonBuffer;
-  // root is now the object which holds the json data an where data can
-  // be appended and sent to Serial
   JsonObject& root = jsonBuffer.createObject();
   root["type"] = type;
   return root;
 }
 
+
 void jsonSend(JsonObject & root){
-  // if the JSONbuffer is to small the program hangs at printTo() and the endl;
-  // charecter after that never gets send
+  // if the JSONbuffer is to small the program hangs at printTo()
   root.printTo(client);
-  // only needed if we seperate incoming streams via readline()f
   client.println();
 }
+
 
 template <size_t N> void jsonAddArray(JsonObject & someRoot, String name, byte (&ar)[N]) {
   // Add an int array to a json object.
@@ -74,7 +68,6 @@ template <size_t N> void jsonAddArray(JsonObject & someRoot, String name, byte (
 
 
 struct Pin {
-
   String pinName;
   byte pinNumber;
   byte pinState;
@@ -85,42 +78,37 @@ class Inputs {
 
   private:
     Pin inputData[MAX_INPUT_SIZE];
-
     // Timeout for waiting for an answer from slave
     int slaveInputTimeout = 1000;
-
     // expected values for input. Will be set at initiation of Input
     byte normalInput[MAX_INPUT_SIZE];
+
 
   public:
     // should be initialized to array of zeros.
     byte inputRepr[MAX_INPUT_SIZE] = {};
 
+
     Inputs() {}
 
+
     void begin(Pin pinLayout[]) {
-      // constructor method with different name to call at a later time
+      // constructor method with different name to call in setup()
       for (int i = 0; i < MAX_INPUT_SIZE; i++) {
         if (pinLayout[i].pinName[0] == 'M') {
           pinMode(pinLayout[i].pinNumber, INPUT);
         }
         inputData[i] = pinLayout[i];
-        inputRepr[i] = inputData[i].pinState;
-        // pinState is getting misused here a bit. The defined pinState
-        // in pinLayout is the expected pinstate for normalInput
-        // And the saved pinState could be different from the acctual state right now
-        // which is needed so the checking befor normalOutput is set can be done
         normalInput[i] = pinLayout[i].pinState;
+        inputRepr[i] = inputData[i].pinState;
       }
     }
 
+
     int readInput(int inputNumber) {
-      // Read state of input at postion inputNumber in inputLayout, check if request has to be send via rs485 first
-      // get Name: if slave: 
-      //              - lookup postion of pin on slave device in dict/hashfunction
-      //                goal: order in which slave inputs are defined in pinLayout should not matter 
-      //              - build request 
-      //              - send request if no response: log no response event -> should be send out via sms
+      // Read state of input at postion inputNumber in inputLayout,
+      // check if request has to be send via rs485 first
+      // Return -1 if error is detected.
       Pin mpin = inputData[inputNumber];
       if (mpin.pinName[0] == 'M') {
         return digitalRead(inputData[inputNumber].pinNumber);
@@ -134,6 +122,7 @@ class Inputs {
           root[F("error")] = errorMessage;
           root[F("pinNumber")] = mpin.pinNumber;
           jsonSend(root);
+          return -1;
         }
       
         query.u8fct = 3;
@@ -148,7 +137,16 @@ class Inputs {
         }
         return ModbusSlaveRegisters[registerIndex];
       }
+      else  {
+          String errorMessage = F("Name not starting with M or S. Ignoring this input");
+          JsonObject & root = jsonBuild(F("error"));
+          root[F("error")] = errorMessage;
+          root[F("pinNumber")] = mpin.pinName;
+          jsonSend(root);
+          return -1;
+      }
     }
+
 
     void update() {
       // Update the states of all pins in inputData to current value.
@@ -157,6 +155,7 @@ class Inputs {
         inputRepr[i] = inputData[i].pinState = readInput(i);
       }
     }
+
 
     int getChanges() {
       // Check if any input state has changed to something different than the
@@ -182,9 +181,10 @@ class Inputs {
       return -1;
     }
 
+
     int checknormalInput(){
       // Check if input is the same as normalInput defined in setup()
-      // if any input is not as expected send index of that input otherwise send-1
+      // if any input is not as expected send index of that input otherwise send -1
 
       for (int i=0; i<MAX_INPUT_SIZE; i++) {
         if (readInput(i) != normalInput[i]){
@@ -193,7 +193,6 @@ class Inputs {
       }
       return -1;
     }
-
 };
 
 
@@ -201,28 +200,27 @@ class Outputs {
 
   private:
     Pin outputData[MAX_OUTPUT_SIZE];
-
     byte normalOutput[MAX_OUTPUT_SIZE];
-
     // timeout length before response from slave is ignored
     int slaveOutputTimeout = 1000;
 
 
-  
   public:
     // should be initialized to array of zeros.
     byte outputRepr[MAX_OUTPUT_SIZE] = {};
 
+
     Outputs() {}
     
+
     void begin(Pin pinLayout[]) {
       // constructor method with different name to call at a later time
       for (int i = 0; i < MAX_OUTPUT_SIZE; i++) {
         outputData[i] = pinLayout[i];
-        // as in Inputs pinState is getting misused a bit
         normalOutput[i] = pinLayout[i].pinState;
-        outputData[i].pinState = 0; // make sure all outputs are off initially
 
+
+        outputRepr[i] = outputData[i].pinState = 0; // make sure all outputs are off initially
         if (pinLayout[i].pinName[0] == 'M') {
           pinMode(pinLayout[i].pinNumber, OUTPUT);
           digitalWrite(outputData[i].pinNumber, 0);
@@ -232,8 +230,8 @@ class Outputs {
 
 
     void writeOutput(int outputNumber, byte outputState) {
-      // Check if output on postion outputnumber in outputPinLayout is in master or slave
-      // write data or send query accordingly
+      // Check if output on postion outputnumber in outputPinLayout
+      // is in master or slave, write data or send query accordingly
       Pin mpin = outputData[outputNumber];
       if (mpin.pinName[0] == 'M') {
         digitalWrite(mpin.pinNumber, outputState);
@@ -261,14 +259,21 @@ class Outputs {
         while(ControllinoModbusMaster.getState() != COM_IDLE &&  millis() - startTime < slaveOutputTimeout) {
           ControllinoModbusMaster.poll();
         }
-        
+      }
+      else  {
+        String errorMessage = F("Name not starting with M or S. Ignoring this input");
+        JsonObject & root = jsonBuild(F("error"));
+        root[F("error")] = errorMessage;
+        root[F("pinNumber")] = mpin.pinName;
+        jsonSend(root);
+        return;
       }
     }
 
 
     void setOutput(byte (&configArray)[MAX_OUTPUT_SIZE]) {
-      // Overloaded function to allow setting the entire output state with
-      // one array. Must have same size AND ORDER as outputPinLayout.
+      // Allow setting the entire output state with one array. 
+      // Must have same size AND ORDER as outputPinLayout.
       // Elements can be  0: set outputpin with same index to 0
       //                  1: set outputpin with same index to 1
       //                  2: dont do anything with that pin
@@ -287,11 +292,13 @@ class Outputs {
       jsonSend(root);
     }
 
+
     void setNormalOutput() {
       setOutput(normalOutput);
     }
 
-    bool isAllreadySet(byte (&toBeChecked)[MAX_OUTPUT_SIZE]) {
+
+    bool isAlreadySet(byte (&toBeChecked)[MAX_OUTPUT_SIZE]) {
       // Check if the desired output array "toBeChecked" is allready
       // set in the current output.
       // Parameters:  toBeChecked: ref to int array of MAX_OUTPUT_SIZE in length
@@ -315,31 +322,30 @@ class Outputs {
       }
       return isSet;
     }
-
 };
 
 class Machine {
 
   private:
-
     Inputs input;
     Outputs output;
-
     byte mmapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE];
 
-  public:
 
-    // flag to indicate wether a sensor is showing an error
-    bool sensorError = false;
+  public:
     // timing start for rechecking of ethernet connection in milliseconds
     unsigned long startTimeReconnect = 0;
     // time between recheckings of ethernet connection in milliseconds
     int waitReconnect = 20000;
 
+
     Machine() {}
 
-    void begin(Pin inputPinLayout[], Pin outputPinLayout[], byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE]) {
-      // constructor method with different name to call after initialzation
+
+    void begin(Pin inputPinLayout[],
+               Pin outputPinLayout[],
+               byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE]) {
+      // constructor method with different name to call in setup()
       input.begin(inputPinLayout);
       output.begin(outputPinLayout);
 
@@ -350,30 +356,25 @@ class Machine {
       }
     }
 
+
     void checkAndEnableNormalOutput() {
       // Check if input is different from normalInput, i.e. the expected input states.
-      // This only works if the inputData is set to the normalInput in the beginning
-      // and not the acctual state of the inputs pins.
       int index = input.checknormalInput();
       if (index == -1) {
         output.setNormalOutput();
       } else {
-        sensorError = true;
         JsonObject & root = jsonBuild(F("startupError"));
         root[F("changedIn")] = index;
         jsonSend(root);
       }
     }
 
+
     void runAllMappings() {
       // Check if input has changed. If so set output to defined output in mapping.
-      // Carefull: the output is also set if the input changes back to normal
       int changedIndex = input.getChanges();
       if (changedIndex != -1) {
-        sensorError = true;
-        if (!output.isAllreadySet(mmapping[changedIndex])){
-          // i'm not sure if this has any benefit because right now everthing is only
-          // set to 0s and when we use delayed responces thing will change again anyway
+        if (!output.isAlreadySet(mmapping[changedIndex])){
           output.setOutput(mmapping[changedIndex]);
         }
 
@@ -398,29 +399,27 @@ class Machine {
         Serial.println(client.connected());
       }
     }
-
 };
 
 
 Machine controller;
+
 
 void resetWrapper(){
   // for some reason non static member function cannot be used as interrupt routines
   controller.checkAndEnableNormalOutput();
 }
 
+
 void setup() {
 
-  //interrupt routine for restarting all outputs after sensorevent has been fixed
-  const int interruptPin = CONTROLLINO_IN0;
-  pinMode(interruptPin, INPUT);
-  attachInterrupt(digitalPinToInterrupt(interruptPin), resetWrapper, RISING);
-
-
   // Setup the whole machine. All pin configurations go here!
+
   // The in/out-putPinLayout describes the normal (i.e. expected) input and output state
   // Remember to set MAX_INPUT_SIZE and MAX_OUTPUT_SIZE at the beginning of this
   // script correctly, i.e. length of input and output layout respectively.
+  // Pin Name has to start with M or S depending on master or slave device
+  // or pin will be ignored otherwise. 
   Pin inputPinLayout[] = {
     {F("M:B01"), CONTROLLINO_A0, 0},
     {F("M:B02"), CONTROLLINO_A1, 0},
@@ -453,6 +452,9 @@ void setup() {
     {F("M:G42"), CONTROLLINO_R11, 1},
   };
 
+// Each row coresponds to input with same index in inputLayout.
+// And order of Elements in one row has to be the same as outputLayout.
+// Note: Remember to update MAX_INPUT_SIZE and MAX_OUTPUT_SIZE at BEGINNING of script
 byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
 //Input\Output :R02,R03,R04,R05,R06,R07,R08,R09,R10,R11
                 {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A0, 
@@ -474,6 +476,12 @@ byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
 };
 
 
+ //interrupt routine for restarting all outputs after sensorevent has been fixed
+  const int interruptPin = CONTROLLINO_IN0;
+  pinMode(interruptPin, INPUT);
+  attachInterrupt(digitalPinToInterrupt(interruptPin), resetWrapper, RISING);
+
+
   // start Serial and check if its connected correctly
   Serial.begin(9600);
   int startTime = millis();
@@ -483,16 +491,16 @@ byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
     }
   }
 
+
   // start the Ethernet connection
   Ethernet.begin(mac, ip);
   // give the Ethernet a second to initialize
   delay(1000);
 
+
   // setup rs485 query and connection
-  query.u8id = 1; // receiving (slave) adress is always one since we only have on device
-  query.u16CoilsNo = 1; // always only read one register at a time
-  ControllinoModbusMaster.begin(19200);     // baud-rate at 19200
-  ControllinoModbusMaster.setTimeOut(5000); // if there is no answer in 5000 ms, roll over
+  ControllinoModbusMaster.begin(19200); // baud-rate at 19200
+  ControllinoModbusMaster.setTimeOut(5000); 
 
 
   // enable connection with server (rpi) over port 4000
@@ -505,18 +513,15 @@ byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
     controller.startTimeReconnect = millis();
   }
 
+
   // initilize controller with input and output pins
   // set inputs to expected inputs tempoarily, set outputs to 0
   controller.begin(inputPinLayout, outputPinLayout, mapping);
-
   // Wait a bit. seems to be needed to set everything up correctly
   delay(500);
 
   // Check if inputs do not show an error before enableing normal operation
   controller.checkAndEnableNormalOutput();
-
-
-
 }
 
 

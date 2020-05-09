@@ -1,23 +1,14 @@
-#include <Controllino.h> /* Usage of CONTROLLINO library allows you to use CONTROLLINO_xx aliases in your sketch. */
-#include "ModbusRtu.h"   /* Usage of ModBusRtu library allows you to implement the Modbus RTU protocol in your sketch. */
+#include <Controllino.h>
+#include "ModbusRtu.h" 
 
-// This MACRO defines Modbus slave address.
-// For any Modbus slave devices are reserved addresses in the range from 1 to 247.
-// Important note only address 0 is reserved for a Modbus master device!
 #define SlaveModbusAdd 1
 
-// This MACRO defines number of the comport that is used for RS 485 interface.
-// For MAXI and MEGA RS485 is reserved UART Serial3.
 #define RS485Serial 3
 
-// The object ControllinoModbuSlave of the class Modbus is initialized with three parameters.
-// The first parametr specifies the address of the Modbus slave device.
-// The second parameter specifies type of the interface used for communication between devices - in this sketch - RS485.
-// The third parameter can be any number. During the initialization of the object this parameter has no effect.
 Modbus ControllinoModbusSlave(SlaveModbusAdd, RS485Serial, 0);
 
-// This uint16 array specified internal registers in the Modbus slave device.
-// Each Modbus device has particular internal registers that are available for the Modbus master.
+// Specified internal registers in the Modbus slave device.
+// Only these particular internal registers are available for Modbus master.
 uint16_t ModbusSlaveRegisters[52];
 
 
@@ -83,25 +74,22 @@ void setup()
     pinMode(CONTROLLINO_R15, OUTPUT);
 
 
-    ControllinoModbusSlave.begin(19200); // Start the communication over the ModbusRTU protocol. Baund rate is set at 19200
+    ControllinoModbusSlave.begin(19200);
 }
 
 void loop()
 {
-    // This instance of the class Modbus checks if there are any incoming data.
-    // If any frame was received. This instance checks if a received frame is Ok.
-    // If the received frame is Ok the instance poll writes or reads corresponding values to the internal registers
-    // (ModbusSlaveRegisters).
-    // Main parameters of the instance poll are address of the internal registers and number of internal registers.
+    // checks for incomming data
+    // if received frame is ok, write or read values from ModbusSlaveRegisters
     ControllinoModbusSlave.poll(ModbusSlaveRegisters, 52);
+
+    // Used for debugging purposes
     for (int i = 0; i<52; i++) {
         Serial.print(ModbusSlaveRegisters[i]);
         Serial.print(" ");
     }
     Serial.println();
 
-    // While receiving or sending data, the Modbus slave device periodically reads the values of the digital outputs
-    // ,writes them to the register and updates the output states.
     ModbusSlaveRegisters[0] = digitalRead(CONTROLLINO_A0);
     ModbusSlaveRegisters[1] = digitalRead(CONTROLLINO_A1);
     ModbusSlaveRegisters[2] = digitalRead(CONTROLLINO_A2);
