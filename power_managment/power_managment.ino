@@ -429,14 +429,14 @@ void setup() {
     {F("M:B06"), CONTROLLINO_A5, 0},
     {F("M:B07"), CONTROLLINO_A6, 0},
     {F("M:B07"), CONTROLLINO_A7, 0},
-    {F("S:B01"), CONTROLLINO_A0, 0},
-    {F("S:B02"), CONTROLLINO_A1, 0},
-    {F("S:B03"), CONTROLLINO_A2, 0},
-    {F("S:B04"), CONTROLLINO_A3, 0},
-    {F("S:B05"), CONTROLLINO_A4, 0},
-    {F("S:B06"), CONTROLLINO_A5, 0},
-    {F("S:B07"), CONTROLLINO_A6, 0},
-    {F("S:B08"), CONTROLLINO_A7, 0},
+    {F("S:B17"), CONTROLLINO_A0, 0},
+    {F("S:B18"), CONTROLLINO_A1, 0},
+    {F("S:B19"), CONTROLLINO_A2, 0},
+    {F("S:B20"), CONTROLLINO_A3, 0},
+    {F("S:B21"), CONTROLLINO_A4, 0},
+    {F("S:B22"), CONTROLLINO_A5, 0},
+    {F("S:B23"), CONTROLLINO_A6, 0},
+    {F("S:B24"), CONTROLLINO_A7, 0},
   };
 
   Pin outputPinLayout[] = {
@@ -465,7 +465,7 @@ byte mapping[MAX_INPUT_SIZE][MAX_OUTPUT_SIZE] = {
                 {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A5, 
                 {0 , 0 , 2 , 2 , 0 , 0 , 0 , 2 , 2 , 0}, // CONTROLLINO_A6, 
                 {0 , 0 , 2 , 2 , 0 , 0 , 0 , 2 , 2 , 0}, // CONTROLLINO_A7, 
-                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A0, slave inputs starting here
+                {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A0, slave inputs
                 {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A1, 
                 {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A2, 
                 {0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 2}, // CONTROLLINO_A3, 
